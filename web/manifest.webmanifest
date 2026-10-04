@@ -1,0 +1,9 @@
+{
+  "name": "2chまとめ",
+  "short_name": "2chまとめ",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#101112",
+  "theme_color": "#101112"
+}

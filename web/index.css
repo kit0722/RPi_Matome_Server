@@ -1,0 +1,1368 @@
+
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
+  color: #111;
+  background: #fff;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #fff;
+  overflow: hidden;
+}
+header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(255,255,255,.98);
+  border-bottom: 1px solid #ddd;
+  padding: 10px 16px 8px;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+h1 {
+  margin: 0;
+  font-size: 22px;
+}
+button, select {
+  font: inherit;
+  border: 1px solid #aaa;
+  background: #fff;
+  border-radius: 8px;
+  padding: 5px 12px;
+}
+button { cursor: pointer; }
+button:disabled { opacity: .45; cursor: default; }
+.new-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 116px;
+  min-width: 116px;
+  min-height: 28px;
+  box-sizing: border-box;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: #e53935;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.new-badge.update-state {
+  background: #ececec;
+  color: #666;
+  cursor: default;
+}
+.new-badge[hidden] { display: none; }
+
+.article-search {
+  position: relative;
+  flex: 0 1 320px;
+  min-width: 170px;
+  max-width: 360px;
+}
+#articleSearch {
+  width: 100%;
+  height: 34px;
+  padding: 5px 34px 5px 11px;
+  border: 1px solid #aaa;
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+  color: #111;
+  outline: none;
+}
+#articleSearch:focus {
+  border-color: #777;
+  box-shadow: 0 0 0 2px rgba(0,0,0,.07);
+}
+.article-search-clear {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 27px;
+  height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #666;
+  background: transparent;
+  font-size: 18px;
+  line-height: 27px;
+}
+.article-search-clear:hover { background: #eee; }
+.article-search-clear[hidden] { display: none; }
+
+.pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.pager-top { margin-left: auto; }
+#pageInfo, #pageInfoBottom {
+  min-width: 56px;
+  text-align: center;
+  color: #555;
+  font-size: 13px;
+}
+.source-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  padding: 12px 0 2px;
+}
+.source-tab {
+  flex: 0 0 auto;
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: #fff;
+  color: #111;
+  padding: 8px 14px;
+  line-height: 1;
+}
+.source-tab.active {
+  background: #222;
+  color: #fff;
+  border-color: #222;
+}
+.subbar {
+  display: flex;
+  gap: 14px;
+  margin-top: 9px;
+  color: #777;
+  font-size: 12px;
+}
+.split-layout {
+  display: grid;
+  --left-pane-width: 39%;
+  grid-template-columns: minmax(320px, var(--left-pane-width)) 9px minmax(0, 1fr);
+  height: calc(100vh - 122px);
+}
+.left-pane {
+  overflow: auto;
+  border-right: 0;
+  padding: 8px 14px 20px;
+}
+.splitter {
+  position: relative;
+  cursor: col-resize;
+  background: #f4f4f4;
+  border-left: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+  touch-action: none;
+  user-select: none;
+  z-index: 12;
+}
+.splitter span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 52px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: #bdbdbd;
+}
+.splitter:hover,
+body.split-dragging .splitter {
+  background: #e9eef7;
+}
+.splitter:hover span,
+body.split-dragging .splitter span {
+  background: #777;
+}
+body.split-dragging {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+.right-pane {
+  position: relative;
+  min-width: 0;
+  background: #f7f7f7;
+}
+#readerFrame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+.reader-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(180deg, #fafafa, #f3f3f3);
+  color: #666;
+  padding: 20px;
+}
+.reader-empty[hidden] { display: none; }
+.reader-empty-box {
+  padding: 26px 30px;
+  border: 1px solid #e3e3e3;
+  border-radius: 14px;
+  background: rgba(255,255,255,.88);
+  text-align: center;
+}
+.reader-empty-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #333;
+}
+.reader-empty-sub {
+  font-size: 13px;
+}
+.error {
+  margin: 8px 0;
+  padding: 9px 12px;
+  border: 1px solid #e1bbbb;
+  background: #fff7f7;
+  color: #8c4444;
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+.item {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 12px;
+  align-items: center;
+  min-height: 76px;
+  padding: 9px 8px;
+  border-bottom: 1px solid #e9e9e9;
+  border-radius: 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: 92px;
+}
+.item:hover { background: #fafafa; }
+.item.selected {
+  background: #f3f6fb;
+  outline: 2px solid #d8e4ff;
+}
+.thumbbox {
+  width: 96px;
+  height: 64px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #f1f1f1;
+}
+.thumb {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.noimg {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  color: #aaa;
+  font-size: 11px;
+}
+.article-title {
+  display: block;
+  color: #111;
+  text-decoration: none;
+  font-size: var(--list-title-size, 16px);
+  line-height: 1.45;
+}
+.article-title:hover { text-decoration: underline; }
+.article-title.read { color: #777; }
+.meta {
+  margin-top: 5px;
+  color: #777;
+  font-size: 12px;
+}
+.meta .source { margin-left: 10px; }
+.pager-bottom {
+  display: flex;
+  justify-content: center;
+  margin: 18px 0 4px;
+}
+@media (max-width: 860px) {
+  body { overflow: auto; }
+  .split-layout { display:block; height:auto; }
+  .splitter, .right-pane { display:none !important; }
+  /* Mobile: the persistent progress/status strip wastes vertical space. */
+  .subbar { display:none !important; }
+  .left-pane {
+    height:auto;
+    min-height:calc(100vh - 92px);
+    overflow:visible;
+    border-right:0;
+    border-bottom:0;
+    padding-left:8px;
+    padding-right:8px;
+  }
+  .topbar { flex-wrap: wrap; }
+  .pager-top { margin-left: 0; }
+  /* Mobile list is title-first: no thumbnail column at all. */
+  .item {
+    display:block;
+    min-height:0;
+    padding:10px 8px;
+  }
+  .thumbbox { display:none !important; }
+  .article-title {
+    font-size:17px;
+    line-height:1.48;
+    font-weight:500;
+  }
+  .meta { margin-top:4px; font-size:12px; }
+}
+
+
+/* ===== 5ch 勢いランキング drawer ===== */
+.ikioi-tab {
+  position: fixed;
+  right: 0;
+  top: 72%;
+  transform: translateY(-50%);
+  z-index: 70;
+  width: 42px;
+  min-height: 148px;
+  padding: 12px 6px;
+  border: 1px solid #ff9d9d;
+  border-right: 0;
+  border-radius: 11px 0 0 11px;
+  background: #fff7f7;
+  color: #e53935;
+  box-shadow: -3px 2px 14px rgba(0,0,0,.10);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.ikioi-tab span {
+  writing-mode: vertical-rl;
+  letter-spacing: .08em;
+  font-size: 14px;
+  font-weight: 700;
+}
+.ikioi-tab b {
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 500;
+}
+body.ikioi-open .ikioi-tab {
+  right: 390px;
+}
+body.ikioi-open .ikioi-tab b {
+  transform: rotate(180deg);
+}
+.ikioi-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 69;
+  width: 390px;
+  max-width: min(390px, 86vw);
+  background: #fff;
+  border-left: 1px solid #e0e0e0;
+  box-shadow: -8px 0 28px rgba(0,0,0,.12);
+  transform: translateX(102%);
+  transition: transform .18s ease;
+  display: flex;
+  flex-direction: column;
+}
+body.ikioi-open .ikioi-drawer {
+  transform: translateX(0);
+}
+.ikioi-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid #eee;
+}
+.ikioi-title {
+  font-size: 19px;
+  font-weight: 800;
+}
+.ikioi-subtitle {
+  margin-top: 2px;
+  color: #777;
+  font-size: 11px;
+}
+.ikioi-close {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border-radius: 50%;
+  border-color: #ddd;
+  color: #777;
+}
+.ikioi-cats {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid #eee;
+  scrollbar-width: thin;
+}
+.ikioi-cat {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid #ccc;
+  font-size: 12px;
+}
+.ikioi-cat.active {
+  background: #222;
+  color: #fff;
+  border-color: #222;
+}
+.ikioi-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  padding: 6px 12px;
+  color: #777;
+  border-bottom: 1px solid #eee;
+  font-size: 11px;
+}
+.ikioi-tools button {
+  padding: 4px 10px;
+  border-radius: 7px;
+  font-size: 12px;
+}
+.ikioi-error {
+  margin: 10px 12px 0;
+  padding: 9px 10px;
+  color: #8c4444;
+  background: #fff6f6;
+  border: 1px solid #efc2c2;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.ikioi-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.ikioi-placeholder {
+  padding: 28px 18px;
+  color: #888;
+  text-align: center;
+  font-size: 13px;
+}
+.ikioi-item {
+  display: grid;
+  grid-template-columns: 34px minmax(0,1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+  color: inherit;
+  text-decoration: none;
+}
+.ikioi-item:hover {
+  background: #fafafa;
+}
+.ikioi-rank {
+  display: grid;
+  place-items: center;
+  align-self: start;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: #f1f1f1;
+  color: #555;
+  font-size: 12px;
+  font-weight: 800;
+}
+.ikioi-item:nth-child(1) .ikioi-rank { background: #fff1b8; color: #8b6200; }
+.ikioi-item:nth-child(2) .ikioi-rank { background: #eceff1; color: #546e7a; }
+.ikioi-item:nth-child(3) .ikioi-rank { background: #f5dfd2; color: #8d5b40; }
+.ikioi-thread-title {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #111;
+}
+.ikioi-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 9px;
+  margin-top: 5px;
+  color: #777;
+  font-size: 10px;
+}
+.ikioi-speed {
+  color: #e53935;
+  font-weight: 800;
+}
+.ikioi-source {
+  padding: 7px 12px;
+  border-top: 1px solid #eee;
+  color: #aaa;
+  font-size: 10px;
+  text-align: right;
+}
+@media (max-width: 860px) {
+  .ikioi-tab { min-height: 116px; width: 38px; }
+  .ikioi-drawer { max-width: 88vw; }
+  body.ikioi-open .ikioi-tab { right: min(390px, 88vw); }
+}
+
+
+/* v0.1.5: compact dark mobile list */
+@media (max-width: 860px) {
+  :root { color-scheme: dark; background:#101112; color:#f3f3f3; }
+  html, body { background:#101112 !important; color:#f3f3f3 !important; }
+  header {
+    background:rgba(18,19,20,.98) !important;
+    border-bottom-color:#2b2d30 !important;
+    padding:7px 9px 5px !important;
+  }
+  h1 { font-size:20px; color:#fff; }
+  button, select,
+  #articleSearch {
+    background:#1b1d20 !important;
+    color:#f2f2f2 !important;
+    border-color:#44484d !important;
+  }
+  #articleSearch::placeholder { color:#8d9197; }
+  .article-search-clear { color:#aaa; }
+  .article-search-clear:hover { background:#2a2d31; }
+  .source-tabs {
+    gap:6px;
+    padding:7px 0 1px;
+    scrollbar-color:#686d74 #191b1e;
+  }
+  .source-tab {
+    background:#181a1d !important;
+    color:#e7e7e7 !important;
+    border-color:#404349 !important;
+    padding:7px 12px;
+  }
+  .source-tab.active {
+    background:#e6e6e6 !important;
+    color:#111 !important;
+    border-color:#e6e6e6 !important;
+  }
+  .left-pane {
+    padding:0 8px 28px !important;
+    background:#101112;
+  }
+  .item {
+    display:block;
+    min-height:0;
+    padding:7px 4px 8px !important;
+    border-bottom:1px solid #2a2c2f !important;
+    border-radius:0 !important;
+    background:transparent !important;
+  }
+  .item.selected { outline:0 !important; background:#17191c !important; }
+  .item > div { display:flex; flex-direction:column; min-width:0; }
+  .meta {
+    order:-1;
+    display:flex;
+    gap:10px;
+    align-items:center;
+    margin:0 0 2px !important;
+    color:#8f949a !important;
+    font-size:10px !important;
+    line-height:1.2;
+  }
+  .meta .source { margin-left:0 !important; color:#aa8d8d; }
+  .article-title {
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    overflow:hidden;
+    color:#f2f2f2 !important;
+    font-size:var(--list-title-size, 16px) !important;
+    line-height:1.30 !important;
+    font-weight:650 !important;
+    text-decoration:none !important;
+    letter-spacing:.01em;
+  }
+  .article-title.read { color:#8a8d91 !important; font-weight:500 !important; }
+  .pager-bottom, .pager-top { color:#aaa; }
+  #pageInfo, #pageInfoBottom { color:#aaa; }
+  .error { background:#2a1717; border-color:#6a3030; color:#ffb9b9; }
+  .new-badge { background:#d83b3b; }
+  .ikioi-tab { background:#1b1d20 !important; color:#ff7f7f !important; border-color:#704040 !important; }
+  .ikioi-drawer { background:#111315 !important; color:#eee !important; }
+  .ikioi-thread-title { color:#f2f2f2 !important; }
+  .ikioi-item { border-bottom-color:#2b2d30 !important; }
+  .ikioi-item:hover { background:#17191c !important; }
+}
+
+
+/* v0.1.6: iPhone/phone forced compact UI (UA class; avoids stale/odd viewport detection). */
+html.mobile-ui, html.mobile-ui body {
+  color-scheme: dark;
+  background:#101112 !important;
+  color:#f3f3f3 !important;
+}
+html.mobile-ui body { overflow:auto !important; }
+html.mobile-ui header {
+  background:#121314 !important;
+  border-bottom:1px solid #2b2d30 !important;
+  padding:6px 8px 5px !important;
+}
+html.mobile-ui .topbar {
+  display:flex !important;
+  flex-wrap:nowrap !important;
+  align-items:center !important;
+  gap:7px !important;
+  min-height:36px;
+  overflow:hidden;
+}
+html.mobile-ui .topbar h1 {
+  flex:0 0 auto;
+  margin:0 !important;
+  font-size:19px !important;
+  line-height:1.1 !important;
+  color:#fff !important;
+  white-space:nowrap;
+}
+html.mobile-ui #refreshBtn {
+  flex:0 0 auto;
+  padding:6px 10px !important;
+  background:#1b1d20 !important;
+  color:#f2f2f2 !important;
+  border-color:#45484d !important;
+}
+html.mobile-ui #newBadge {
+  flex:0 0 116px;
+  width:116px;
+  min-width:116px;
+  max-width:116px;
+  justify-content:center;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  padding:6px 7px !important;
+  background:#d83b3b !important;
+  color:#fff !important;
+  border-radius:999px !important;
+  font-size:12px !important;
+}
+html.mobile-ui #newBadge.update-state {
+  background:#2a2d31 !important;
+  color:#c9cdd2 !important;
+}
+/* On phones keep only: title / refresh / new badge. */
+html.mobile-ui .article-search,
+html.mobile-ui .source-tabs,
+html.mobile-ui .pager-top,
+html.mobile-ui #sourceFilter,
+html.mobile-ui .subbar {
+  display:none !important;
+}
+html.mobile-ui .split-layout { display:block !important; height:auto !important; }
+html.mobile-ui .splitter,
+html.mobile-ui .right-pane { display:none !important; }
+html.mobile-ui .left-pane {
+  height:auto !important;
+  min-height:calc(100vh - 48px) !important;
+  overflow:visible !important;
+  padding:0 7px 24px !important;
+  border:0 !important;
+  background:#101112 !important;
+}
+html.mobile-ui .item {
+  display:block !important;
+  width:100% !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:7px 4px 8px !important;
+  border:0 !important;
+  border-bottom:1px solid #2a2c2f !important;
+  border-radius:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+}
+html.mobile-ui .item > div { display:flex !important; flex-direction:column !important; min-width:0 !important; width:100% !important; }
+html.mobile-ui .thumbbox { display:none !important; }
+html.mobile-ui .meta {
+  order:-1 !important;
+  display:flex !important;
+  gap:9px !important;
+  align-items:center !important;
+  margin:0 0 2px !important;
+  color:#8f949a !important;
+  font-size:10px !important;
+  line-height:1.2 !important;
+}
+html.mobile-ui.setting-dark-mode .meta .source { margin-left:0 !important; color:#b28c8c !important; }
+html.mobile-ui.setting-dark-mode .article-title {
+  display:-webkit-box !important;
+  -webkit-box-orient:vertical !important;
+  -webkit-line-clamp:2 !important;
+  overflow:hidden !important;
+  width:100% !important;
+  max-width:none !important;
+  color:#f2f2f2 !important;
+  font-size:var(--list-title-size, 16px) !important;
+  line-height:1.30 !important;
+  font-weight:650 !important;
+  text-decoration:none !important;
+}
+html.mobile-ui.setting-dark-mode .article-title.read { color:#85898f !important; font-weight:500 !important; }
+html.mobile-ui.setting-dark-mode .pager-bottom { color:#aaa !important; }
+html.mobile-ui.setting-dark-mode .pager-bottom button { background:#1b1d20 !important; color:#eee !important; border-color:#45484d !important; }
+html.mobile-ui.setting-dark-mode .ikioi-tab { background:#1b1d20 !important; color:#ff7f7f !important; border-color:#704040 !important; }
+html.mobile-ui.setting-dark-mode .ikioi-drawer { background:#111315 !important; color:#eee !important; }
+html.mobile-ui.setting-dark-mode .ikioi-thread-title { color:#f2f2f2 !important; font-weight:650 !important; }
+
+
+/* v0.1.7: per-device font size + explicit read label + phone header trimmed for speed/space. */
+.font-size-control {
+  margin-left: 4px;
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  white-space:nowrap;
+  font-size:12px;
+  color:#666;
+}
+.font-size-control input {
+  width:48px;
+  height:30px;
+  padding:3px 4px;
+  border:1px solid #aaa;
+  border-radius:7px;
+  font:inherit;
+  font-size:13px;
+  text-align:center;
+  background:#fff;
+  color:#111;
+}
+.read-label {
+  display:inline-block;
+  padding:1px 5px;
+  border:1px solid #c62828;
+  border-radius:999px;
+  background:#e53935;
+  color:#fff;
+  font-size:9px;
+  font-weight:700;
+  line-height:1.25;
+}
+.article-title { font-size:var(--list-title-size, 16px); }
+html.mobile-ui #refreshBtn { display:none !important; }
+html.mobile-ui .topbar { justify-content:flex-start !important; }
+html.mobile-ui.setting-dark-mode .font-size-control {
+  margin-left:auto !important;
+  color:#9da2a8 !important;
+  font-size:11px !important;
+  flex:0 0 auto;
+}
+html.mobile-ui.setting-dark-mode .font-size-control input {
+  width:42px !important;
+  height:28px !important;
+  padding:2px 3px !important;
+  background:#1b1d20 !important;
+  color:#f3f3f3 !important;
+  border-color:#45484d !important;
+  font-size:12px !important;
+}
+html.mobile-ui .read-label {
+  border-color:#b71c1c !important;
+  color:#fff !important;
+  background:#e53935 !important;
+  font-weight:700 !important;
+}
+html.mobile-ui.setting-dark-mode .article-title { font-size:var(--list-title-size, 16px) !important; }
+
+/* v0.1.9: keep standalone iPhone UI below the status-bar/notch. */
+@media (max-width: 860px) {
+  html.mobile-ui body { padding-top: env(safe-area-inset-top, 0px); }
+}
+@media (display-mode: standalone) {
+  html.mobile-ui body { padding-top: env(safe-area-inset-top, 0px) !important; }
+}
+
+
+/* v0.1.11: source counts + shared site picker. */
+.source-tabs-row { display:flex; align-items:flex-end; gap:8px; min-width:0; }
+.source-tabs-row .source-tabs { flex:1 1 auto; min-width:0; }
+.source-tab .source-count { margin-left:4px; font-size:9px; opacity:.62; vertical-align:1px; }
+.site-picker-btn { flex:0 0 auto; margin-bottom:2px; padding:7px 10px; font-size:12px; }
+.site-picker-panel { margin-top:7px; padding:9px 10px; border:1px solid #cfd2d6; border-radius:9px; background:#fafafa; box-shadow:0 4px 18px rgba(0,0,0,.08); }
+.site-picker-head { display:flex; align-items:center; gap:10px; font-size:12px; color:#666; }
+.site-picker-head b { color:#222; font-size:13px; }
+.site-picker-head button { margin-left:auto; padding:4px 9px; }
+.site-picker-actions { display:flex; gap:6px; margin:7px 0; }
+.site-picker-actions button { padding:4px 9px; font-size:11px; }
+.site-picker-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:3px 10px; max-height:260px; overflow:auto; }
+.site-picker-item { display:flex; align-items:center; gap:6px; min-width:0; padding:3px 2px; font-size:12px; }
+.site-picker-item input { flex:0 0 auto; }
+.site-picker-item .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.site-picker-item .count { margin-left:auto; color:#888; font-size:10px; }
+html.mobile-ui .source-tabs-row,
+html.mobile-ui .site-picker-panel { display:none !important; }
+
+.font-size-control .font-step { display:none; width:27px; height:28px; padding:0; align-items:center; justify-content:center; line-height:1; }
+html.mobile-ui.setting-dark-mode .font-size-control .font-step { display:inline-flex !important; background:#1b1d20 !important; color:#f3f3f3 !important; border-color:#45484d !important; }
+html.mobile-ui.setting-dark-mode .font-size-control input { width:34px !important; }
+
+/* v0.1.15: the whole article card opens with one click. */
+.item{cursor:pointer}
+
+
+/* v0.1.20: iPad keeps the fast 2-column reader, but omits the wide source-tab strip. */
+html.tablet-ui .source-tabs-row,
+html.tablet-ui .site-picker-panel { display:none !important; }
+html.tablet-ui .split-layout { height:calc(100vh - 78px); height:calc(100dvh - 78px); }
+html.tablet-ui .left-pane { min-width:0; }
+html.tablet-ui #readerFrame { background:#fff; }
+
+
+/* v0.1.21: phone controls always stay visible; zoom is controlled only by the +/- buttons. */
+html.mobile-ui, html.mobile-ui body,
+html.tablet-ui, html.tablet-ui body {
+  touch-action: pan-x pan-y;
+}
+html.mobile-ui body {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 48px) !important;
+}
+html.mobile-ui header {
+  position: fixed !important;
+  top: env(safe-area-inset-top, 0px) !important;
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  z-index: 1000 !important;
+  margin: 0 !important;
+}
+html.mobile-ui .topbar { min-height: 36px !important; }
+
+
+/* v0.1.28: phone-only final placement and hard UI overrides. */
+html.mobile-ui .ikioi-tab {
+  top: auto !important;
+  bottom: max(4px, env(safe-area-inset-bottom, 0px)) !important;
+  transform: none !important;
+}
+html.mobile-ui body.ikioi-open .ikioi-tab {
+  right: min(390px, 86vw) !important;
+}
+html.mobile-ui .read-label {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 1px 5px !important;
+  border: 1px solid #ff6b6b !important;
+  border-radius: 999px !important;
+  background: #e53935 !important;
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  font-size: 9px !important;
+  font-weight: 800 !important;
+  line-height: 1.25 !important;
+  opacity: 1 !important;
+}
+
+
+/* v0.1.35: hard fallback. JS also applies these inline on phones. */
+html.mobile-ui .ikioi-tab {
+  position: fixed !important;
+  top: auto !important;
+  bottom: max(0px, env(safe-area-inset-bottom, 0px)) !important;
+  transform: none !important;
+}
+#newBadge {
+  display: inline-flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  width: 116px !important;
+  min-width: 116px !important;
+  max-width: 116px !important;
+  flex: 0 0 116px !important;
+}
+
+
+/* v0.1.36: source emphasis + keep all iPhone font controls visible. */
+.meta .source{
+  display:inline-flex;align-items:center;padding:1px 6px;border-radius:999px;
+  background:#eef3ff;color:#385d9d;font-weight:700;line-height:1.25;
+}
+html.mobile-ui .meta .source{
+  color:#ffd0d0 !important;background:#4a2a2d !important;padding:1px 6px !important;
+  border:1px solid #6c3a3d !important;font-weight:700 !important;
+}
+html.mobile-ui .topbar{gap:4px !important;overflow:visible !important;min-width:0 !important;}
+html.mobile-ui .topbar h1{font-size:18px !important;}
+html.mobile-ui #newBadge{flex:0 0 104px !important;width:104px !important;min-width:104px !important;max-width:104px !important;padding:6px 5px !important;font-size:11px !important;}
+html.mobile-ui .font-size-control{margin-left:auto !important;gap:2px !important;min-width:112px !important;flex:0 0 112px !important;overflow:visible !important;}
+html.mobile-ui .font-size-control > span{font-size:10px !important;}
+html.mobile-ui .font-size-control .font-step{display:inline-flex !important;width:27px !important;min-width:27px !important;height:28px !important;padding:0 !important;}
+html.mobile-ui .font-size-control input{width:34px !important;min-width:34px !important;}
+
+
+/* v0.1.37: reliable source emphasis, aligned site picker, compact iPhone +/- controls. */
+.meta .source {
+  display:inline-flex !important;
+  align-items:center !important;
+  padding:1px 6px !important;
+  border-radius:999px !important;
+  background:#fff0d9 !important;
+  color:#a64b00 !important;
+  border:1px solid #f0b26d !important;
+  font-weight:800 !important;
+  line-height:1.25 !important;
+}
+.source-tabs-row { align-items:center !important; }
+.site-picker-btn {
+  align-self:center !important;
+  margin:0 !important;
+  height:32px !important;
+  box-sizing:border-box !important;
+}
+html.mobile-ui .meta .source {
+  background:#4a3021 !important;
+  color:#ffd39d !important;
+  border-color:#76502f !important;
+}
+html.mobile-ui .topbar {
+  gap:4px !important;
+  overflow:visible !important;
+  min-width:0 !important;
+}
+html.mobile-ui .topbar h1 { font-size:18px !important; }
+html.mobile-ui #newBadge {
+  flex:0 0 104px !important;
+  width:104px !important;
+  min-width:104px !important;
+  max-width:104px !important;
+  padding:6px 5px !important;
+  font-size:11px !important;
+}
+/* Keep the numeric input as the internal value holder, but do not show it on phones. */
+html.mobile-ui.setting-dark-mode .font-size-control {
+  margin-left:auto !important;
+  gap:3px !important;
+  min-width:79px !important;
+  flex:0 0 79px !important;
+  overflow:visible !important;
+}
+html.mobile-ui .font-size-control > span { font-size:10px !important; }
+html.mobile-ui.setting-dark-mode .font-size-control input {
+  display:none !important;
+  width:0 !important;
+  min-width:0 !important;
+  padding:0 !important;
+  border:0 !important;
+}
+html.mobile-ui .font-size-control .font-step {
+  display:inline-flex !important;
+  width:28px !important;
+  min-width:28px !important;
+  height:28px !important;
+  padding:0 !important;
+}
+
+/* v0.1.71: direct URL verification without disturbing the 300-item list. */
+.url-test-btn{height:32px;padding:0 10px;border:1px solid #c8cbd0;border-radius:9px;background:#fff;color:#444;font-size:12px;white-space:nowrap;cursor:pointer}
+.url-test-btn:hover{background:#f5f6f7}
+html.mobile-ui .url-test-btn{display:none!important}
+
+
+/* v0.1.161: staged mobile UI — home only is active. */
+.mobile-bottom-nav{display:none}
+@media (max-width:860px){
+  html.mobile-ui .mobile-bottom-nav{
+    position:fixed;left:0;right:0;bottom:0;z-index:180;display:grid!important;
+    grid-template-columns:repeat(4,1fr);height:calc(66px + env(safe-area-inset-bottom,0px));
+    padding:4px 6px env(safe-area-inset-bottom,0px);background:rgba(38,41,44,.97);
+    border-top:1px solid #464a50;box-shadow:0 -5px 16px rgba(0,0,0,.28);backdrop-filter:blur(10px)
+  }
+  html.mobile-ui .mobile-bottom-nav button{
+    border:0!important;background:transparent!important;color:#8f959b!important;border-radius:8px!important;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px 1px!important;
+    font-size:10px!important;line-height:1.05!important;font-weight:500!important
+  }
+  html.mobile-ui .mobile-bottom-nav button b{font-size:25px;line-height:1;font-weight:500}
+
+  html.mobile-ui .mobile-bottom-nav button.active{
+    color:#f0f3f5!important;
+  }
+  html.mobile-ui .left-pane{padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))!important}
+}
+
+
+/* v0.1.162: mobile bottom-nav site list. Reuses the existing picker without changing page scrolling. */
+@media (max-width: 860px) {
+  html.mobile-ui .site-picker-panel.mobile-nav-open {
+    display:block !important;
+    position:fixed;
+    left:10px;
+    right:10px;
+    bottom:calc(74px + env(safe-area-inset-bottom, 0px));
+    z-index:175;
+    max-height:min(68vh, 560px);
+    margin:0;
+    overflow:hidden;
+    background:#202225 !important;
+    border:1px solid #45484d !important;
+    box-shadow:0 12px 34px rgba(0,0,0,.45);
+  }
+  html.mobile-ui.setting-dark-mode .site-picker-panel.mobile-nav-open .site-picker-head { color:#aeb3b9 !important; }
+  html.mobile-ui.setting-dark-mode .site-picker-panel.mobile-nav-open .site-picker-head b { color:#f1f1f1 !important; }
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-head button,
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-actions button {
+    background:#2a2d31 !important; color:#f1f1f1 !important; border-color:#4a4e54 !important;
+  }
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-list {
+    display:grid;
+    grid-template-columns:1fr;
+    max-height:min(52vh, 430px);
+    overflow:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-item {
+    min-height:34px;
+    color:#f0f0f0;
+    border-bottom:1px solid #2f3236;
+  }
+}
+
+
+/* v0.1.163: large clickable site names + desktop top navigation. */
+.desktop-top-nav{display:flex;align-items:center;gap:5px;flex:0 0 auto}
+.desktop-top-nav button{height:32px;padding:0 11px;border:1px solid #c8cbd0;border-radius:9px;background:#fff;color:#333;font-size:13px;white-space:nowrap;cursor:pointer}
+.desktop-top-nav button:hover{background:#f5f6f7}
+.desktop-top-nav button.active{background:#eceff2;border-color:#aeb4ba;font-weight:700}
+.desktop-top-nav button[aria-disabled="true"]{opacity:.48;cursor:default}
+html.mobile-ui .desktop-top-nav,html.tablet-ui .desktop-top-nav{display:none!important}
+
+.site-picker-item .site-picker-name{
+  flex:1 1 auto;min-width:0;text-align:left;border:0;background:transparent;color:inherit;
+  padding:7px 6px;font:inherit;font-size:16px;font-weight:650;line-height:1.25;cursor:pointer;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap
+}
+.site-picker-item .site-picker-name:hover{text-decoration:underline}
+.site-picker-item .site-picker-name:disabled{opacity:.42;cursor:default;text-decoration:none}
+.site-picker-item input{width:18px;height:18px}
+.site-picker-item .count{font-size:11px}
+
+@media (max-width:860px){
+  html.mobile-ui .site-picker-panel.mobile-nav-open{
+    left:0;right:0;top:max(env(safe-area-inset-top,0px),0px);
+    bottom:calc(66px + env(safe-area-inset-bottom,0px));
+    max-height:none;border-radius:0;margin:0;padding:12px 12px 10px;
+    display:flex!important;flex-direction:column;
+  }
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-head{flex:0 0 auto}
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-actions{flex:0 0 auto}
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-list{
+    flex:1 1 auto;min-height:0;max-height:none;overflow:auto;
+    grid-template-columns:1fr;align-content:start;
+  }
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-item{min-height:48px;padding:3px 4px}
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-name{font-size:19px!important;padding:10px 7px}
+  html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-item input{width:22px;height:22px}
+  html.mobile-ui.setting-dark-mode .site-picker-panel.mobile-nav-open .site-picker-item .count{font-size:12px;color:#9ca2a8}
+}
+
+/* v0.1.166: desktop uses the top navigation for site list; hide the duplicate legacy button only. */
+html:not(.mobile-ui):not(.tablet-ui) .site-picker-btn{display:none!important}
+
+
+/* v0.1.166: site switching is unified into the new site-list navigation. */
+.source-tabs-row { display:none !important; }
+
+
+/* v0.1.168: minimal settings panel. Keep the existing window/body scroll model unchanged. */
+.display-settings-panel{position:fixed;inset:0;z-index:12000;background:rgba(0,0,0,.42);display:flex;align-items:center;justify-content:center;padding:18px}
+.display-settings-panel[hidden]{display:none!important}
+.display-settings-card{width:min(520px,100%);background:#fff;color:#222;border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.28);padding:16px}
+.display-settings-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+.display-settings-head b{font-size:20px}
+.display-settings-head button{padding:7px 12px;border:1px solid #c8cbd0;border-radius:8px;background:#f5f6f7;color:#222}
+.display-settings-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-top:1px solid #e4e6e8}
+.display-settings-row strong{display:block;font-size:16px}
+.display-settings-row small{display:block;margin-top:4px;color:#777;font-size:12px}
+.display-settings-stepper{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.display-settings-stepper button{width:38px;height:38px;padding:0;font-size:22px;line-height:1;border:1px solid #bfc4c9;border-radius:9px;background:#f7f8f9;color:#222}
+.display-settings-stepper input{width:58px;height:38px;box-sizing:border-box;text-align:center;font-size:17px;border:1px solid #bfc4c9;border-radius:9px}
+html.mobile-ui .display-settings-panel{padding:12px;align-items:flex-end}
+html.mobile-ui.setting-dark-mode .display-settings-card{background:#202226;color:#f1f1f1;border-radius:16px 16px 10px 10px;padding:16px 14px calc(18px + env(safe-area-inset-bottom))}
+html.mobile-ui.setting-dark-mode .display-settings-head button,html.mobile-ui.setting-dark-mode .display-settings-stepper button,html.mobile-ui.setting-dark-mode .display-settings-stepper input{background:#2c2f34;color:#f3f3f3;border-color:#555b62}
+html.mobile-ui.setting-dark-mode .display-settings-row{border-top-color:#3b3f45}
+html.mobile-ui.setting-dark-mode .display-settings-row small{color:#aeb3b9}
+
+
+/* v0.1.169: adjustable secondary UI text. Does not change article-title/body text. */
+:root{--matome-ui-font-size:16px}
+.site-picker-head{font-size:calc(var(--matome-ui-font-size) - 4px)!important}
+.site-picker-head b{font-size:calc(var(--matome-ui-font-size) - 3px)!important}
+.site-picker-actions button{font-size:calc(var(--matome-ui-font-size) - 5px)!important}
+.site-picker-item .site-picker-name{font-size:var(--matome-ui-font-size)!important}
+.site-picker-item .count{font-size:calc(var(--matome-ui-font-size) - 5px)!important}
+.statusline,#status{font-size:calc(var(--matome-ui-font-size) - 4px)!important}
+html.mobile-ui{--matome-ui-font-size:19px}
+html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-name{font-size:var(--matome-ui-font-size)!important}
+html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-item .count{font-size:calc(var(--matome-ui-font-size) - 7px)!important}
+html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-head{font-size:calc(var(--matome-ui-font-size) - 6px)!important}
+html.mobile-ui .site-picker-panel.mobile-nav-open .site-picker-head b{font-size:calc(var(--matome-ui-font-size) - 5px)!important}
+
+
+/* v0.1.170: expanded safe display settings. No scroll-model/status-bar changes. */
+.display-settings-card{max-height:min(86vh,760px);overflow:auto}
+.display-settings-toggle-row{min-height:48px}
+.settings-switch{position:relative;width:50px;height:30px;flex:0 0 50px}
+.settings-switch input{position:absolute;opacity:0;pointer-events:none}
+.settings-switch span{position:absolute;inset:0;border-radius:999px;background:#c7cbd0;transition:.15s}
+.settings-switch span:after{content:"";position:absolute;width:24px;height:24px;left:3px;top:3px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:.15s}
+.settings-switch input:checked + span{background:#2b78e4}
+.settings-switch input:checked + span:after{transform:translateX(20px)}
+.display-settings-actions{padding-top:14px;border-top:1px solid #e4e6e8}
+.display-settings-actions button{width:100%;padding:10px 12px;border:1px solid #c8cbd0;border-radius:9px;background:#f5f6f7;color:#333;font-size:14px}
+html.mobile-ui.setting-dark-mode .display-settings-actions{border-top-color:#3b3f45}
+html.mobile-ui.setting-dark-mode .display-settings-actions button{background:#2c2f34;color:#f3f3f3;border-color:#555b62}
+html.setting-hide-site-counts .site-picker-item .count{display:none!important}
+html.setting-hide-status .subbar{display:none!important}
+html.setting-hide-ikioi .ikioi-tab,html.setting-hide-ikioi .ikioi-drawer{display:none!important}
+html.setting-hide-update #newBadge{display:none!important}
+
+
+/* v0.1.171: settings-card scale + full dark mode. No scroll-model/status-bar changes. */
+:root{--settings-panel-scale:1}
+.display-settings-card{transform:scale(var(--settings-panel-scale));transform-origin:center center}
+html.mobile-ui .display-settings-card{transform-origin:center bottom}
+
+html.setting-dark-mode{color-scheme:dark;background:#101214;color:#f1f3f5}
+html.setting-dark-mode body{background:#101214!important;color:#f1f3f5!important}
+html.setting-dark-mode .topbar,
+html.setting-dark-mode .toolbar,
+html.setting-dark-mode .subbar,
+html.setting-dark-mode .source-tabs-row,
+html.setting-dark-mode .site-picker-panel,
+html.setting-dark-mode .desktop-top-nav,
+html.setting-dark-mode .reader-pane,
+html.setting-dark-mode .list-pane{background:#15181b!important;color:#f1f3f5!important;border-color:#34393f!important}
+html.setting-dark-mode input,
+html.setting-dark-mode select,
+html.setting-dark-mode button{background:#20242a!important;color:#f1f3f5!important;border-color:#4b525a!important}
+html.setting-dark-mode input::placeholder{color:#8f969e!important}
+html.setting-dark-mode .article-row,
+html.setting-dark-mode .article-item,
+html.setting-dark-mode .list-item{border-color:#30353b!important;background:#15181b!important;color:#f1f3f5!important}
+html.setting-dark-mode .article-title{color:#f3f4f6!important}
+html.setting-dark-mode .article-title.read{color:#9298a0!important}
+html.setting-dark-mode .meta,
+html.setting-dark-mode .statusline,
+html.setting-dark-mode #status,
+html.setting-dark-mode .site-picker-head,
+html.setting-dark-mode .site-picker-item .count{color:#a8afb7!important}
+html.setting-dark-mode .site-picker-name{color:#f1f3f5!important}
+html.setting-dark-mode .display-settings-panel{background:rgba(0,0,0,.66)!important}
+html.setting-dark-mode .display-settings-card{background:#1c2025!important;color:#f1f3f5!important}
+html.setting-dark-mode .display-settings-row,
+html.setting-dark-mode .display-settings-actions{border-color:#3a4047!important}
+html.setting-dark-mode .display-settings-row small{color:#aeb4bc!important}
+html.setting-dark-mode .mobile-bottom-nav{background:#171a1e!important;border-color:#34393f!important}
+html.setting-dark-mode .mobile-bottom-nav button{color:#c9ced4!important}
+html.setting-dark-mode .mobile-bottom-nav button.active{color:#fff!important;background:#242930!important}
+html.setting-dark-mode .ikioi-drawer{background:#171a1e!important;color:#f1f3f5!important;border-color:#34393f!important}
+
+
+/* v0.1.177: iPhone keeps the existing mobile-ui dark theme; avoid double dark-theme stacking. */
+html.mobile-ui #settingsDarkMode:disabled + span { opacity:.72; cursor:default; }
+
+/* v0.1.182: iPhone/web mobile view hides the web navigation bar. The native app owns navigation. */
+@media (max-width:860px){
+  html.mobile-ui .mobile-bottom-nav{display:none!important;visibility:hidden!important;pointer-events:none!important}
+  html.mobile-ui .left-pane{padding-bottom:20px!important}
+}
+
+
+/* ===== Article display quick settings (v0.1.209) ===== */
+.article-view-tab {
+  position: fixed;
+  right: 0;
+  top: 52%;
+  transform: translateY(-50%);
+  z-index: 72;
+  width: 42px;
+  min-height: 148px;
+  padding: 12px 6px;
+  border: 1px solid #9aa4af;
+  border-right: 0;
+  border-radius: 11px 0 0 11px;
+  background: #f7f8fa;
+  color: #4d5966;
+  box-shadow: -3px 2px 14px rgba(0,0,0,.10);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.article-view-tab span { writing-mode: vertical-rl; letter-spacing:.08em; font-size:14px; font-weight:700; }
+.article-view-tab b { font-size:18px; line-height:1; font-weight:500; }
+body.article-view-open .article-view-tab { right:390px; }
+body.article-view-open .article-view-tab b { transform:rotate(180deg); }
+.article-view-drawer {
+  position:fixed; top:0; right:0; bottom:0; z-index:71; width:390px; max-width:min(390px,86vw);
+  background:#fff; border-left:1px solid #e0e0e0; box-shadow:-8px 0 28px rgba(0,0,0,.12);
+  transform:translateX(102%); transition:transform .18s ease; display:flex; flex-direction:column;
+}
+body.article-view-open .article-view-drawer { transform:translateX(0); }
+.article-view-options { padding:12px; }
+.article-view-option {
+  display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 12px;
+  border:1px solid #e5e7eb; border-radius:12px; background:#fafafa; cursor:pointer;
+}
+.article-view-option strong { display:block; font-size:15px; }
+.article-view-option small { display:block; margin-top:3px; color:#777; font-size:11px; }
+@media (max-width:860px) {
+  .article-view-tab { top:51%; width:40px; min-height:132px; }
+  body.article-view-open .article-view-tab { right:min(390px,86vw); }
+  .article-view-drawer { max-width:86vw; }
+}
+html.mobile-ui body, body.mobile-ui { }
+html.mobile-ui.setting-dark-mode .article-view-drawer, html.mobile-ui.setting-dark-mode .ikioi-drawer { background:#16191d; color:#f2f3f5; border-left-color:#333; }
+html.mobile-ui.setting-dark-mode .article-view-option { background:#20242a; border-color:#363c44; }
+html.mobile-ui.setting-dark-mode .article-view-option small, html.mobile-ui.setting-dark-mode .ikioi-subtitle { color:#aeb4bc; }
+
+/* v0.1.209: restore the proven smartphone bottom navigation requested by user.
+   Keep the existing right-edge Display Settings and 5ch Momentum tabs unchanged. */
+@media (max-width:860px){
+  html.mobile-ui .mobile-bottom-nav{
+    display:grid!important;
+    visibility:visible!important;
+    pointer-events:auto!important;
+  }
+  html.mobile-ui .left-pane{
+    padding-bottom:calc(92px + env(safe-area-inset-bottom,0px))!important;
+  }
+  html.mobile-ui .mobile-bottom-nav .pending-nav{
+    opacity:.52!important;
+    pointer-events:none!important;
+  }
+}
+\n\n/* v0.1.209: mobile theme follows per-device setting instead of forced dark. */\nhtml.mobile-ui:not(.setting-dark-mode),\nhtml.mobile-ui:not(.setting-dark-mode) body { color-scheme:light; background:#fff!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) header { background:#fff!important; border-bottom-color:#ddd!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .topbar h1 { color:#111!important; }\nhtml.mobile-ui:not(.setting-dark-mode) button,\nhtml.mobile-ui:not(.setting-dark-mode) select,\nhtml.mobile-ui:not(.setting-dark-mode) input,\nhtml.mobile-ui:not(.setting-dark-mode) #articleSearch { background:#fff!important; color:#222!important; border-color:#bbb!important; }\nhtml.mobile-ui:not(.setting-dark-mode) #articleSearch::placeholder { color:#888!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .left-pane,\nhtml.mobile-ui:not(.setting-dark-mode) .list-pane,\nhtml.mobile-ui:not(.setting-dark-mode) .reader-pane { background:#fff!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .item { background:transparent!important; border-bottom-color:#ddd!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .item.selected { background:#f4f6f8!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .article-title { color:#111!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .article-title.read { color:#9a2f2f!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .meta { color:#777!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .meta .source { color:#9b4d4d!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .pager-bottom,\nhtml.mobile-ui:not(.setting-dark-mode) .pager-top,\nhtml.mobile-ui:not(.setting-dark-mode) #pageInfo,\nhtml.mobile-ui:not(.setting-dark-mode) #pageInfoBottom { color:#666!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .pager-bottom button { background:#fff!important; color:#222!important; border-color:#bbb!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .mobile-bottom-nav { background:#fff!important; border-color:#ddd!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .mobile-bottom-nav button { background:#fff!important; color:#555!important; border-color:transparent!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .mobile-bottom-nav button.active { color:#111!important; background:#f1f3f5!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .site-picker-panel.mobile-nav-open,\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-card { background:#fff!important; color:#222!important; border-color:#ddd!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .site-picker-panel.mobile-nav-open .site-picker-head,\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-row small { color:#666!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .site-picker-panel.mobile-nav-open .site-picker-head b,\nhtml.mobile-ui:not(.setting-dark-mode) .site-picker-name { color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-panel { background:rgba(0,0,0,.25)!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-head button,\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-stepper button,\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-stepper input { background:#fff!important; color:#222!important; border-color:#bbb!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .display-settings-row { border-top-color:#ddd!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .ikioi-tab { background:#fff!important; color:#c33!important; border-color:#d99!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .ikioi-drawer { background:#fff!important; color:#222!important; border-color:#ddd!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .ikioi-thread-title { color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .ikioi-item { border-bottom-color:#ddd!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .ikioi-item:hover { background:#f6f7f8!important; }\nhtml.mobile-ui #settingsDarkMode:disabled + span { opacity:1; cursor:pointer; }\n
+/* v0.1.209: explicit mobile light theme overrides historical forced-dark mobile rules. */
+html.mobile-ui.setting-light-mode,
+html.mobile-ui.setting-light-mode body { color-scheme:light !important; background:#fff !important; color:#222 !important; }
+html.mobile-ui.setting-light-mode header,
+html.mobile-ui.setting-light-mode .topbar,
+html.mobile-ui.setting-light-mode .toolbar,
+html.mobile-ui.setting-light-mode .subbar,
+html.mobile-ui.setting-light-mode .left-pane,
+html.mobile-ui.setting-light-mode .list-pane,
+html.mobile-ui.setting-light-mode .reader-pane { background:#fff !important; color:#222 !important; border-color:#ddd !important; }
+html.mobile-ui.setting-light-mode .item { background:transparent !important; color:#222 !important; border-bottom-color:#ddd !important; }
+html.mobile-ui.setting-light-mode .item.selected { background:#f4f6f8 !important; }
+html.mobile-ui.setting-light-mode .article-title { color:#111 !important; }
+html.mobile-ui.setting-light-mode .article-title.read { color:#9a2f2f !important; }
+html.mobile-ui.setting-light-mode .meta { color:#777 !important; }
+html.mobile-ui.setting-light-mode .meta .source { color:#9b4d4d !important; }
+html.mobile-ui.setting-light-mode button,
+html.mobile-ui.setting-light-mode select,
+html.mobile-ui.setting-light-mode input,
+html.mobile-ui.setting-light-mode #articleSearch { background:#fff !important; color:#222 !important; border-color:#bbb !important; }
+html.mobile-ui.setting-light-mode .mobile-bottom-nav,
+html.mobile-ui.setting-light-mode .site-picker-panel.mobile-nav-open,
+html.mobile-ui.setting-light-mode .display-settings-card,
+html.mobile-ui.setting-light-mode .ikioi-drawer { background:#fff !important; color:#222 !important; border-color:#ddd !important; }
+html.mobile-ui.setting-light-mode .mobile-bottom-nav button { background:#fff !important; color:#555 !important; }
+html.mobile-ui.setting-light-mode .mobile-bottom-nav button.active { background:#f1f3f5 !important; color:#111 !important; }
+html.mobile-ui.setting-light-mode .ikioi-thread-title,
+html.mobile-ui.setting-light-mode .site-picker-name { color:#222 !important; }
+
+/* v0.1.209: explicit full-surface themes. */
+html.setting-dark-mode #readerFrame{background:#101214 !important;}
+html.setting-dark-mode .split-layout,
+html.setting-dark-mode .left-pane,
+html.setting-dark-mode .reader-pane,
+html.setting-dark-mode header,
+html.setting-dark-mode .topbar,
+html.setting-dark-mode .toolbar,
+html.setting-dark-mode .subbar{background:#101214 !important;color:#eef1f4 !important;border-color:#34393f !important;}
+@media (max-width:860px){
+  html.setting-light-mode, html.setting-light-mode body,
+  html.setting-light-mode header,
+  html.setting-light-mode .topbar,
+  html.setting-light-mode .toolbar,
+  html.setting-light-mode .subbar,
+  html.setting-light-mode .left-pane,
+  html.setting-light-mode .list-pane,
+  html.setting-light-mode .reader-pane{
+    color-scheme:light !important; background:#fff !important; color:#222 !important; border-color:#ddd !important;
+  }
+}
+
+/* v0.1.209: phone light mode final override for the list/settings UI. */
+@media (max-width:860px){
+  html.setting-light-mode,
+  html.setting-light-mode body,
+  html.setting-light-mode header,
+  html.setting-light-mode .topbar,
+  html.setting-light-mode .toolbar,
+  html.setting-light-mode .subbar,
+  html.setting-light-mode .source-tabs-row,
+  html.setting-light-mode .left-pane,
+  html.setting-light-mode .list-pane,
+  html.setting-light-mode .reader-pane,
+  html.setting-light-mode .display-settings-card,
+  html.setting-light-mode .site-picker-panel.mobile-nav-open,
+  html.setting-light-mode .ikioi-drawer,
+  html.setting-light-mode .mobile-bottom-nav{
+    color-scheme:light !important;
+    background:#fff !important;
+    color:#222 !important;
+    border-color:#ddd !important;
+  }
+  html.setting-light-mode .article-item,
+  html.setting-light-mode .article-row,
+  html.setting-light-mode .list-item{
+    background:#fff !important;
+    color:#222 !important;
+    border-color:#ddd !important;
+  }
+  html.setting-light-mode .article-title{color:#111 !important;}
+  html.setting-light-mode .article-title.read{color:#9a2f2f !important;}
+  html.setting-light-mode .meta,
+  html.setting-light-mode .statusline,
+  html.setting-light-mode #status,
+  html.setting-light-mode .display-settings-row small{color:#777 !important;}
+  html.setting-light-mode button,
+  html.setting-light-mode input,
+  html.setting-light-mode select,
+  html.setting-light-mode #articleSearch{
+    background:#fff !important;
+    color:#222 !important;
+    border-color:#bbb !important;
+  }
+  html.setting-light-mode .mobile-bottom-nav button{
+    background:#fff !important;
+    color:#555 !important;
+  }
+  html.setting-light-mode .mobile-bottom-nav button.active{
+    background:#f1f3f5 !important;
+    color:#111 !important;
+  }
+  html.setting-light-mode .display-settings-row{border-color:#ddd !important;}
+}
+
+
+/* v0.1.225: Site list checkbox is the rightmost control. */
+.site-picker-item .site-picker-check {
+  flex:0 0 auto;
+  margin-left:6px;
+  margin-right:2px;
+  accent-color:#2b78e4;
+}
+html.mobile-ui .site-picker-panel.mobile-nav-open {
+  touch-action:pan-y;
+}

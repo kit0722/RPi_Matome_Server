@@ -1,0 +1,333 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
+  color: #161616;
+  background: #fff;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: auto; }
+body { margin: 0; background: #fff; }
+.thread-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 7px 14px;
+  background: rgba(255,255,255,.97);
+  border-bottom: 1px solid #e1e1e1;
+  backdrop-filter: blur(8px);
+}
+.mode-tabs { display: inline-flex; gap: 4px; }
+.mode-btn {
+  border: 1px solid #bbb;
+  border-radius: 8px;
+  background: #fff;
+  color: #333;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+.mode-btn.active { background: #222; color: #fff; border-color: #222; }
+.mode-btn.ai { border-color: #7d67c7; }
+.mode-btn.ai.active { background: #5b46a8; color: #fff; border-color: #5b46a8; }
+.mode-btn:disabled { opacity: .65; cursor: wait; }
+.ai-level-wrap { display: inline-flex; align-items: center; gap: 4px; margin-left: 2px; color: #666; font-size: 11px; }
+.ai-level-wrap select { height: 30px; border: 1px solid #c9c3dd; border-radius: 8px; background: #fff; color: #3d345c; padding: 0 24px 0 8px; font: inherit; font-size: 11px; cursor: pointer; }
+.ai-level-wrap select:focus { outline: 2px solid rgba(91,70,168,.18); outline-offset: 1px; }
+.toolbar-spacer { flex: 1; }
+.count-info { color: #777; font-size: 11px; white-space: nowrap; }
+#originalLink { color: #1264d8; text-decoration: none; font-size: 12px; white-space: nowrap; }
+#originalLink:hover { text-decoration: underline; }
+main { max-width: 1020px; margin: 0 auto; padding: 18px 22px 64px; }
+.loading { color: #777; padding: 24px 0; }
+.thread-meta-row { display: flex; flex-wrap: wrap; gap: 8px 14px; color: #777; font-size: 12px; }
+#speed { color: #df3636; font-weight: 700; }
+h1 { margin: 8px 0 12px; font-size: 24px; line-height: 1.42; }
+.summary-note {
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  background: #f5f7fa;
+  color: #667085;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.posts { display: block; }
+.thread-post {
+  padding: 13px 4px 15px;
+  border-bottom: 1px solid #ededed;
+  scroll-margin-top: 58px;
+}
+.thread-post.focused { background: #fffbea; }
+.post-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.post-number {
+  color: #1769aa;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 13px;
+}
+.post-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #f1f3f5;
+  color: #666;
+  font-size: 10px;
+}
+.post-badge.reply { background: #edf4ff; color: #2764a7; }
+.post-badge.image { background: #eef8ef; color: #397a3d; }
+.post-message {
+  font-family: "MS PGothic", "ＭＳ Ｐゴシック", Meiryo, sans-serif;
+  font-size: 15px;
+  line-height: 1.68;
+  overflow-wrap: anywhere;
+}
+.post-message a { color: #1264d8; text-decoration: none; }
+.post-message a:hover { text-decoration: underline; }
+.post-message img {
+  display: block;
+  max-width: min(100%, 820px);
+  max-height: 720px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  margin: 8px 0;
+  border-radius: 5px;
+}
+.post-aa {
+  overflow-x: auto;
+  margin: 4px 0;
+  padding: 4px 0;
+  white-space: pre;
+  tab-size: 4;
+  font-family: "MS PGothic", "ＭＳ Ｐゴシック", "MS Gothic", monospace;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.omitted {
+  margin: 9px 0 4px;
+  color: #aaa;
+  font-size: 10px;
+  text-align: center;
+}
+.error {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #e4bcbc;
+  border-radius: 9px;
+  background: #fff6f6;
+  color: #8d3d3d;
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+@media (max-width: 760px) {
+  main { padding: 14px 12px 48px; }
+  h1 { font-size: 20px; }
+  .count-info { display: none; }
+  .mode-btn { padding: 6px 9px; }
+  .ai-level-wrap span { display: none; }
+  .ai-level-wrap select { max-width: 92px; }
+}
+
+/* GIF: still by default, animate only on hover. */
+.hover-gif { cursor: pointer !important; }
+.hover-gif:not(.hover-gif-playing) { outline: 1px solid rgba(120,120,120,.10); }
+.direct-gif-preview { margin-top: 6px !important; }
+
+/* v3.9.5: GIF hover playback without depending on cross-origin fetch. */
+.hover-gif-wrap {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  cursor: pointer !important;
+}
+.hover-gif-wrap > img {
+  margin: 0 !important;
+  cursor: pointer !important;
+}
+.hover-gif-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.hover-gif-poster[hidden] { display: none; }
+.hover-gif-badge {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.68);
+  color: #fff;
+  font: 11px/1.4 sans-serif;
+  pointer-events: none;
+}
+
+.post-message .hover-gif-wrap { margin: 8px 0; }
+
+.direct-image-preview { display:block; max-width:min(100%, 760px); height:auto; margin-top:6px !important; margin-bottom:8px; border-radius:2px; }
+
+
+/* v0.9.31: inline YouTube preview/player for 5ch raw links. */
+.youtube-inline-card {
+  width: min(100%, 640px);
+  margin: 7px 0 10px;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.youtube-inline-thumb {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: #000;
+  cursor: pointer;
+}
+.youtube-inline-thumb img {
+  width: 100%;
+  height: 100%;
+  max-width: none !important;
+  max-height: none !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  object-fit: cover;
+}
+.youtube-inline-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.72);
+  color: #fff;
+  font: 24px/1 sans-serif;
+}
+.youtube-inline-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.thread-back{border:1px solid #ccc;background:#fff;border-radius:8px;padding:7px 10px;font-weight:700;cursor:pointer;white-space:nowrap}
+@media(max-width:860px){.thread-toolbar{position:sticky;top:0;z-index:20}.thread-back{display:inline-block}}
+
+
+/* v0.1.5: mobile 5ch thread dark mode */
+@media (max-width: 760px) {
+  :root { color-scheme:dark; background:#0f1011; color:#ededed; }
+  html, body { background:#0f1011 !important; color:#ededed !important; }
+  .thread-toolbar {
+    background:rgba(17,18,20,.97) !important;
+    border-bottom-color:#2d3034 !important;
+  }
+  .mode-btn, .thread-back, .ai-level-wrap select {
+    background:#1c1e21 !important;
+    color:#ededed !important;
+    border-color:#45494f !important;
+  }
+  .mode-btn.active { background:#e5e5e5 !important; color:#111 !important; border-color:#e5e5e5 !important; }
+  .mode-btn.ai.active { background:#6954bc !important; color:#fff !important; border-color:#6954bc !important; }
+  #originalLink, .post-message a, .post-number { color:#77aefb !important; }
+  .thread-meta-row, .loading, .count-info, .ai-level-wrap { color:#92979e !important; }
+  h1 { color:#f2f2f2; }
+  .summary-note { background:#17191c !important; color:#aeb4bb !important; }
+  .thread-post { border-bottom-color:#292c30 !important; }
+  .thread-post.focused { background:#1b1a13 !important; }
+  .post-badge { background:#22252a !important; color:#b9bdc3 !important; }
+  .post-badge.reply { background:#18243a !important; color:#8dbaff !important; }
+  .post-badge.image { background:#17271a !important; color:#8fd596 !important; }
+  .post-message { color:#e7e7e7; }
+  .post-aa { color:#eee; }
+  .omitted { color:#777d84; }
+  .error { background:#2a1717 !important; border-color:#6a3030 !important; color:#ffb9b9 !important; }
+}
+
+
+/* v0.1.6 forced phone dark mode */
+html.mobile-ui, html.mobile-ui body { color-scheme:dark; background:#0f1011 !important; color:#ededed !important; }
+html.mobile-ui .thread-toolbar { background:#131518 !important; border-bottom-color:#2c2f33 !important; }
+html.mobile-ui .thread-toolbar button, html.mobile-ui .thread-toolbar select { background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+html.mobile-ui .thread-post { color:#ededed !important; border-bottom-color:#2a2d31 !important; }
+html.mobile-ui .thread-post a { color:#78b5ff !important; }
+html.mobile-ui .summary-note { background:#17191c !important; color:#aeb4bb !important; }
+html.mobile-ui .thread-post.focused { background:#1b1a13 !important; }
+html.mobile-ui .post-badge { background:#22252a !important; color:#b9bdc3 !important; }
+html.mobile-ui .post-badge.reply { background:#18243a !important; color:#8dbaff !important; }
+html.mobile-ui .post-badge.image { background:#17271a !important; color:#8fd596 !important; }
+
+/* v0.1.8 separate article/thread-reading size. Toolbar/title stay unchanged. */
+.post-message { font-size: var(--reader-user-size, 16px) !important; }
+/* v0.1.95: normalize site-supplied text sizing so the same +/- value is used everywhere. */
+.post-message :where(p,div,span,font,b,big,small,strong,em,i,u,s,del,ins,li,dd,dt,td,th,blockquote,section,article,h1,h2,h3,h4,h5,h6) {
+  font-size: 1em !important;
+}
+.reader-font-size-control { display:inline-flex; align-items:center; gap:4px; color:#666; font-size:11px; white-space:nowrap; }
+.reader-font-size-control input { width:44px; height:30px; box-sizing:border-box; border:1px solid #c9c3dd; border-radius:8px; padding:2px 4px; text-align:center; background:#fff; color:#333; font:inherit; font-size:12px; }
+html.mobile-ui .reader-font-size-control { color:#aaa !important; }
+html.mobile-ui .reader-font-size-control input { background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+
+
+/* v0.1.9: keep standalone iPhone UI below the status-bar/notch. */
+@media (max-width: 860px) {
+  html.mobile-ui body { padding-top: env(safe-area-inset-top, 0px); }
+}
+@media (display-mode: standalone) {
+  html.mobile-ui body { padding-top: env(safe-area-inset-top, 0px) !important; }
+}
+
+.reader-font-size-control .reader-font-step { display:none; width:27px; height:28px; padding:0; align-items:center; justify-content:center; line-height:1; }
+html.mobile-ui .reader-font-size-control .reader-font-step { display:inline-flex !important; background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+html.mobile-ui .reader-font-size-control input { width:34px !important; }
+
+
+/* v0.1.21: no pinch zoom; article/thread text size is controlled by the +/- buttons. */
+html, body { touch-action: pan-x pan-y; }
+
+.direct-video-preview{display:block;max-width:min(100%,820px);width:100%;height:auto;margin:8px 0 12px;background:#000;border-radius:5px;}
+
+/* v0.1.78 fallbacks for restricted X / YouTube embeds */
+.youtube-open-fallback{display:block;margin:8px auto 0;padding:9px 14px;width:max-content;max-width:90%;border:1px solid #666;border-radius:8px;text-decoration:none;font-weight:700}
+.x-fallback-card{padding:10px 12px;border:1px solid #555;border-radius:10px;margin:10px 0}
+.x-fallback-note{margin-bottom:6px;opacity:.8}
+
+
+/* v0.1.81: enlarge only GIF media on phones; normal JPG/PNG/WebP rules are unchanged. */
+@media (max-width: 760px) {
+  .post-message .hover-gif-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+  .post-message .hover-gif-wrap > img,
+  .post-message img.hover-gif,
+  .post-message img.direct-gif-preview {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    height: auto !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    object-fit: contain !important;
+  }
+}

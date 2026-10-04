@@ -1,0 +1,999 @@
+:root {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
+  color: #111;
+  background: #fff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: #fff; }
+
+#readerHeader {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  background: rgba(255,255,255,.98);
+}
+#readerHeader button {
+  font: inherit;
+  border: 1px solid #aaa;
+  background: #fff;
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+#readerHeader a {
+  color: #777;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+main {
+  width: min(100%, 660px);
+  margin: 0 auto;
+  padding: 20px 14px 60px;
+}
+#loading {
+  color: #777;
+  padding: 20px 0;
+}
+.meta {
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+h1 {
+  margin: 0 0 14px;
+  font-size: 21px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.content {
+  font-size: 15px;
+  line-height: 1.52;
+  overflow-wrap: anywhere;
+}
+.content * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.content div {
+  margin: 0;
+  padding: 0;
+}
+.content > div {
+  margin-bottom: .28em;
+}
+.content p {
+  margin: 0 0 .42em;
+}
+.content br + br {
+  display: none;
+}
+.content blockquote {
+  margin: 6px 0;
+  padding: 7px 10px;
+  border-left: 3px solid #bbb;
+  background: #fafafa;
+}
+.content img {
+  display: block;
+  width: auto !important;
+  height: auto !important;
+  max-width: 100% !important;
+  max-height: 680px !important;
+  margin: 8px auto !important;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+.content a {
+  color: #333;
+  text-decoration: underline;
+}
+.content ul, .content ol {
+  padding-left: 1.4em;
+}
+.content pre {
+  white-space: pre-wrap;
+  overflow-wrap: normal;
+  word-break: normal;
+  font-family: "MS PGothic", "ＭＳ Ｐゴシック", "MS Gothic", "ＭＳ ゴシック", monospace;
+  line-height: 1.15;
+  tab-size: 4;
+}
+.content iframe,
+.content video {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+.error {
+  padding: 12px;
+  border: 1px solid #dfbcbc;
+  background: #fff6f6;
+  white-space: pre-wrap;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,.92);
+  padding: 18px;
+}
+.lightbox[hidden] { display: none; }
+#lightboxImg {
+  max-width:none;
+  max-height:none;
+  object-fit:contain;
+  cursor:zoom-in;
+}
+/* v0.1.62: article page stays non-zoomable; only the opened photo supports pinch zoom/pan. */
+.lightbox { overflow:hidden; touch-action:none; }
+#lightboxImg {
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-user-drag:none;
+  transform-origin:center center;
+  will-change:transform;
+}
+#lightboxImg.is-panning{cursor:grabbing;}
+.lightbox-counter{position:fixed;left:50%;bottom:14px;z-index:10002;transform:translateX(-50%);padding:5px 10px;border-radius:999px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:1;pointer-events:none;}
+.instagram-static-card{margin:10px auto 14px;max-width:620px;}
+.instagram-static-card img{display:block;margin:0 auto 6px!important;max-width:100%!important;height:auto!important;}
+.instagram-static-card a{display:block;text-align:center;font-size:12px;color:#8ab4ff!important;}
+.instagram-static-fallback{padding:18px 12px;margin:0 0 6px!important;border:1px solid rgba(127,127,127,.25);border-radius:10px;text-align:center;color:#888;}
+.prepared-image-fallback,.x-static-fallback{display:block;margin:10px 0;padding:10px 12px;border:1px solid rgba(127,127,127,.25);border-radius:8px;color:#888!important;font-size:12px;}
+.x-static-fallback p{margin:0 0 5px!important;}
+
+.lightbox-nav {
+  position:fixed;top:50%;z-index:10001;transform:translateY(-50%);
+  width:52px;height:72px;border:0;border-radius:12px;background:rgba(0,0,0,.45);color:#fff;
+  font-size:46px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;
+  user-select:none;-webkit-user-select:none;
+}
+.lightbox-prev{left:12px}.lightbox-next{right:12px}
+.lightbox-nav:disabled{opacity:.18;cursor:default}.lightbox-nav[hidden]{display:none}
+.usi32-lead-image{display:block;margin:8px auto 14px!important;max-width:100%!important;height:auto!important}
+@media(max-width:860px){.lightbox-nav{width:44px;height:64px;font-size:40px}.lightbox-prev{left:4px}.lightbox-next{right:4px}}
+
+#closeBtn {
+  position: fixed;
+  top: 12px;
+  right: 15px;
+  width: 42px;
+  height: 42px;
+  border: 0;
+  border-radius: 50%;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+@media (max-width: 660px) {
+  main { padding: 16px 11px 50px; }
+  h1 { font-size: 19px; }
+  .content { font-size: 15px; }
+}
+
+body.embedded header { padding: 10px 14px; }
+body.embedded #backBtn { display:none; }
+body.embedded main { width: min(100%, 980px); max-width: 100%; padding: 16px 18px 60px; }
+body.embedded h1 { white-space: normal; overflow: visible; text-overflow: clip; }
+body.embedded .content { font-size: 15px; line-height: 1.6; }
+body.embedded .content pre { white-space: pre-wrap; overflow-wrap: normal; word-break: normal; }
+
+/* GIF: still by default; auto-play only while the whole image is visible. */
+.hover-gif { cursor: default !important; }
+.hover-gif:not(.hover-gif-playing) { outline: 1px solid rgba(120,120,120,.10); }
+.direct-gif-preview { margin-top: 5px !important; }
+
+/* v3.9.5: GIF hover playback without depending on cross-origin fetch. */
+.hover-gif-wrap {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  cursor: default !important;
+}
+.hover-gif-wrap > img {
+  margin: 0 !important;
+  cursor: default !important;
+}
+.hover-gif-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.hover-gif-poster[hidden] { display: none; }
+.hover-gif-badge {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  z-index: 2;
+  padding: 2px 7px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.68);
+  color: #fff;
+  font: 11px/1.4 sans-serif;
+  pointer-events: none;
+}
+
+.content .hover-gif-wrap { margin: 8px auto; }
+
+/* v0.1.73: heavy GIF loading / tap playback / failure feedback. */
+.prepared-gif-shell {
+  position: relative; display: block; width: fit-content; max-width: 100%; margin: 8px auto; line-height: 0;
+}
+.content .prepared-gif-shell > img { margin: 0 !important; cursor: pointer !important; }
+.prepared-gif-loading,.prepared-gif-error {
+  position:absolute; inset:0; z-index:4; display:none; align-items:center; justify-content:center; gap:9px;
+  padding:12px; background:rgba(0,0,0,.48); color:#fff;
+  font:600 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; text-align:center;
+  pointer-events:none;
+}
+.prepared-gif-shell.gif-loading > .prepared-gif-loading { display:flex; }
+.prepared-gif-shell.gif-error > .prepared-gif-error { display:flex; background:rgba(0,0,0,.62); }
+.prepared-gif-spinner {
+  width:22px; height:22px; flex:0 0 22px; border:3px solid rgba(255,255,255,.32); border-top-color:#fff;
+  border-radius:50%; animation:preparedGifSpin .75s linear infinite;
+}
+@keyframes preparedGifSpin { to { transform:rotate(360deg); } }
+
+
+/* Auto-joined multi-page articles */
+.multi-page-divider {
+  margin: 34px 0 24px;
+  padding: 8px 12px;
+  border-top: 1px solid #e4e4e4;
+  border-bottom: 1px solid #eeeeee;
+  color: #888;
+  font-size: 13px;
+  text-align: center;
+  background: #fafafa;
+}
+
+
+/* v0.9.04: X/Twitter fallback cards for Jin115 raw HTML. */
+.x-static-section {
+  margin: 18px 0 24px;
+}
+.x-static-card {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #d8d8d8;
+  border-radius: 10px;
+  background: #fff;
+  line-height: 1.65;
+}
+.x-static-author {
+  margin-bottom: 6px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.x-static-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.x-static-link {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+}
+.x-static-media {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.x-static-thumb {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f7f7f7;
+}
+
+/* v0.9.07: X media/video thumbnail via official embed */
+.x-official-embed-wrap {
+  margin-top: 10px;
+  width: 100%;
+  max-width: 560px;
+  min-height: 360px;
+  overflow: hidden;
+  border-radius: 10px;
+}
+.x-official-embed {
+  display: block;
+  width: 100%;
+  height: 520px;
+  border: 0;
+  background: #fff;
+}
+
+/* v0.9.09: Jin115 reaction/comment + AA fallback tail */
+.jin-reaction-tail { margin-top: 18px; }
+.jin-reaction-tail img { max-width: 100%; height: auto; }
+.jin-reaction-tail pre { max-width: 100%; overflow-x: auto; white-space: pre-wrap; }
+
+/* Imgur bare-link inline preview */
+.imgur-inline-preview { margin: 8px 0 14px; }
+.imgur-inline-preview img { display:block; max-width:100%; height:auto; margin:0; }
+
+
+/* v0.1.5: mobile article dark mode */
+@media (max-width: 660px) {
+  :root { color-scheme:dark; background:#0f1011; color:#ededed; }
+  html, body { background:#0f1011 !important; color:#ededed !important; }
+  header {
+    background:rgba(17,18,20,.97) !important;
+    border-bottom-color:#2d3034 !important;
+  }
+  header button { background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+  header a { color:#9ca1a8 !important; }
+  main { background:#0f1011; }
+  h1 { color:#f4f4f4; }
+  .meta, #loading { color:#92979e !important; }
+  .content { color:#e8e8e8; }
+  .content a { color:#78aefb !important; }
+  .content blockquote { background:#17191c !important; border-left-color:#555a61 !important; color:#ddd; }
+  .content pre { color:#efefef; }
+  .error { background:#2a1717 !important; border-color:#6a3030 !important; color:#ffb9b9 !important; }
+  .youtube-inline-card, .imgur-inline-preview { background:#151719 !important; }
+}
+
+
+/* v0.1.6 forced phone dark mode */
+html.mobile-ui.setting-dark-mode, html.mobile-ui.setting-dark-mode body { color-scheme:dark; background:#0f1011 !important; color:#ededed !important; }
+html.mobile-ui.setting-dark-mode #readerHeader { background:#141619 !important; color:#eee !important; border-bottom-color:#2b2e32 !important; }
+html.mobile-ui.setting-dark-mode #readerHeader button { background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+html.mobile-ui.setting-dark-mode main, html.mobile-ui.setting-dark-mode .content { background:#0f1011 !important; color:#ededed !important; }
+html.mobile-ui.setting-dark-mode .content a { color:#7fb7ff !important; }
+html.mobile-ui.setting-dark-mode .content blockquote { background:#17191c !important; border-left-color:#555a61 !important; color:#ddd !important; }
+html.mobile-ui.setting-dark-mode .error { background:#2a1717 !important; border-color:#6a3030 !important; color:#ffb9b9 !important; }
+html.mobile-ui img { max-width:100% !important; height:auto; }
+
+/* v0.1.8 separate article-reading size. Header/meta/title stay unchanged. */
+.content { font-size: var(--reader-user-size, 16px) !important; }
+/* v0.1.95: every source site follows the same reader font-size setting.
+   Source HTML often contains <font size>, <small>/<big>, heading tags, or other
+   element-level sizing that otherwise ignores the +/- control.  Normalize only
+   article text containers; dedicated metadata/cards below re-apply their compact sizes. */
+.content :where(p,div,span,font,b,big,small,strong,em,i,u,s,del,ins,li,dd,dt,td,th,blockquote,section,article,h1,h2,h3,h4,h5,h6) {
+  font-size: 1em !important;
+}
+.reader-font-size-control { display:inline-flex; align-items:center; gap:4px; margin-right:8px; color:#666; font-size:12px; white-space:nowrap; }
+.reader-font-size-control input { width:44px; height:30px; box-sizing:border-box; border:1px solid #ccc; border-radius:7px; padding:2px 4px; text-align:center; background:#fff; color:#222; font:inherit; font-size:13px; }
+html.mobile-ui.setting-dark-mode .reader-font-size-control { color:#aaa !important; }
+html.mobile-ui.setting-dark-mode .reader-font-size-control input { background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+
+
+/* v0.1.9: keep standalone iPhone UI below the status-bar/notch. */
+@media (max-width: 860px) {
+  html.mobile-ui body { padding-top: env(safe-area-inset-top, 0px); }
+}
+@media (display-mode: standalone) {
+  html.mobile-ui body { padding-top: env(safe-area-inset-top, 0px) !important; }
+}
+
+.reader-font-size-control .reader-font-step { display:none; width:27px; height:28px; padding:0; align-items:center; justify-content:center; line-height:1; }
+html.mobile-ui.setting-dark-mode .reader-font-size-control .reader-font-step { display:inline-flex !important; background:#1c1e21 !important; color:#eee !important; border-color:#45494f !important; }
+html.mobile-ui .reader-font-size-control input { width:34px !important; }
+
+
+/* v0.1.18 generic article media */
+.direct-image-preview{display:block;max-width:min(100%,760px);height:auto;margin:6px 0 10px;border-radius:3px;}
+.direct-video-preview,.prepared-video,.prepared-video-player{display:block;max-width:min(100%,760px);width:100%;height:auto;margin:8px 0 12px;background:#000;box-sizing:border-box;}
+.prepared-video{background:transparent;}
+.prepared-video-play{position:relative;display:block;width:100%;padding:0;border:0;background:#111;cursor:pointer;overflow:hidden;border-radius:5px;color:#fff;}
+.prepared-video-play img{display:block;width:100%;height:auto;margin:0;opacity:.94;}
+.prepared-video-play span{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:inline-flex;align-items:center;justify-content:center;min-width:120px;min-height:42px;padding:0 14px;border-radius:999px;background:rgba(0,0,0,.72);font-size:17px;font-weight:700;line-height:1.2;}
+.prepared-video-retry{display:block;width:100%;max-width:min(100%,760px);margin:8px 0 12px;padding:11px 12px;border:1px solid #7d5f5f;border-radius:8px;background:#2a1d1d;color:#ffe7e7;font-size:14px;}
+
+/* v0.1.74: visible loading feedback while on-demand video relay starts. */
+.prepared-video-loading{display:flex;align-items:center;justify-content:center;gap:9px;max-width:min(100%,760px);margin:-6px 0 12px;padding:7px 10px;color:#bbb;font:600 13px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+.prepared-video-loading[hidden]{display:none;}
+.prepared-video-spinner{width:17px;height:17px;flex:0 0 17px;border:2px solid rgba(180,180,180,.32);border-top-color:#ddd;border-radius:50%;animation:preparedVideoSpin .75s linear infinite;}
+@keyframes preparedVideoSpin{to{transform:rotate(360deg);}}
+.youtube-inline-card{display:block;max-width:min(100%,760px);width:100%;margin:8px 0 12px;}
+.youtube-inline-thumb{position:relative;display:block;width:100%;padding:0;border:0;background:#111;cursor:pointer;overflow:hidden;border-radius:5px;}
+.youtube-inline-thumb img{display:block;width:100%;height:auto;margin:0;}
+.youtube-inline-play{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:grid;place-items:center;width:58px;height:42px;border-radius:10px;background:rgba(0,0,0,.72);color:#fff;font-size:25px;line-height:1;}
+.youtube-inline-frame{display:block;width:100%;aspect-ratio:16/9;border:0;}
+.x-official-embed-wrap{display:block;max-width:550px;width:100%;margin:10px 0;min-height:180px;}
+.x-official-embed{display:block;width:100%;min-height:540px;border:0;}
+@media(max-width:700px){.x-official-embed{min-height:520px}.direct-image-preview,.direct-video-preview,.prepared-video,.prepared-video-player,.prepared-video-retry,.youtube-inline-card{max-width:100%}}
+
+
+/* v0.1.21: no pinch zoom; article/thread text size is controlled by the +/- buttons. */
+html, body { touch-action: pan-x pan-y; }
+
+/* v0.1.35: iPhone rendering optimization. No layout change; off-screen blocks may skip paint. */
+html.mobile-ui .content > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 96px;
+}
+html.mobile-ui .content img {
+  content-visibility: auto;
+}
+
+
+/* v0.1.36 */
+.meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+.reader-source-badge{display:inline-flex;align-items:center;padding:2px 7px;border-radius:999px;background:#eef3ff;color:#385d9d;font-weight:800;}
+html.mobile-ui.setting-dark-mode .reader-source-badge{background:#4a2a2d;color:#ffd0d0;}
+
+
+/* v0.1.37: source/original-site emphasis and compact iPhone +/- controls. */
+.meta { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+.reader-source-badge {
+  display:inline-flex !important; align-items:center !important;
+  padding:2px 7px !important; border-radius:999px !important;
+  background:#fff0d9 !important; color:#a64b00 !important;
+  border:1px solid #f0b26d !important; font-weight:800 !important;
+}
+#originalLink {
+  display:inline-flex !important; align-items:center !important;
+  padding:5px 9px !important; border-radius:8px !important;
+  background:#fff2b8 !important; color:#7a4a00 !important;
+  border:1px solid #e6bd54 !important; font-weight:800 !important;
+  text-decoration:none !important;
+}
+html.mobile-ui.setting-dark-mode .reader-source-badge { background:#4a3021 !important; color:#ffd39d !important; border-color:#76502f !important; }
+html.mobile-ui.setting-dark-mode #originalLink { background:#4c3b13 !important; color:#ffe39a !important; border-color:#806b2a !important; }
+html.mobile-ui .reader-font-size-control input {
+  display:none !important; width:0 !important; min-width:0 !important; padding:0 !important; border:0 !important;
+}
+html.mobile-ui .reader-font-size-control { gap:3px !important; }
+html.mobile-ui .reader-font-size-control .reader-font-step {
+  display:inline-flex !important; width:28px !important; min-width:28px !important; height:28px !important; padding:0 !important;
+}
+
+
+/* v0.1.46: iPhone reply metadata is compact, anonymous-name free, and one line. PC unchanged. */
+html.mobile-ui.setting-dark-mode .content { color:#f3f3f3 !important; }
+html.mobile-ui .mobile-thread-meta {
+  display:block !important;
+  width:100% !important;
+  box-sizing:border-box !important;
+  margin:9px 0 4px !important;
+  padding:7px 0 0 !important;
+  border-top:1px solid rgba(255,255,255,.09) !important;
+  color:#777d84 !important;
+  -webkit-text-fill-color:#777d84 !important;
+  font-size:11px !important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Yu Gothic UI",Meiryo,sans-serif !important;
+  font-weight:400 !important;
+  font-variant-numeric:tabular-nums !important;
+  line-height:1.25 !important;
+  letter-spacing:0 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+}
+html.mobile-ui .content > .mobile-thread-meta:first-child { margin-top:0 !important; }
+/* v0.1.62: smartphone thread replies use near-zero inter-reply whitespace. PC unchanged. */
+html.mobile-ui main {
+  padding: 14px 12px 42px !important;
+}
+html.mobile-ui .content {
+  line-height: 1.5 !important;
+}
+html.mobile-ui .content > div {
+  margin-bottom: 0 !important;
+}
+html.mobile-ui .content p {
+  margin: 0 !important;
+}
+html.mobile-ui .mobile-thread-meta {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+html.mobile-ui .mobile-thread-meta + p,
+html.mobile-ui .mobile-thread-meta + div,
+html.mobile-ui .mobile-thread-meta + pre,
+html.mobile-ui .mobile-thread-meta + blockquote,
+html.mobile-ui .mobile-thread-meta + ul,
+html.mobile-ui .mobile-thread-meta + ol {
+  margin-top: 0 !important;
+}
+html.mobile-ui .content img,
+html.mobile-ui .content .hover-gif-wrap,
+html.mobile-ui .direct-image-preview,
+html.mobile-ui .direct-video-preview,
+html.mobile-ui .prepared-video,
+html.mobile-ui .prepared-video-player,
+html.mobile-ui .prepared-video-retry,
+html.mobile-ui .youtube-inline-card,
+html.mobile-ui .x-official-embed-wrap {
+  margin-top: 5px !important;
+  margin-bottom: 6px !important;
+}
+
+/* v0.1.62: remove the last blank line inside mobile reply blocks. */
+html.mobile-ui .content p:has(.mobile-thread-meta),
+html.mobile-ui .content li:has(.mobile-thread-meta),
+html.mobile-ui .content dd:has(.mobile-thread-meta),
+html.mobile-ui .content dt:has(.mobile-thread-meta),
+html.mobile-ui .content div:has(.mobile-thread-meta) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+html.mobile-ui .content p:has(.mobile-thread-meta) > br:last-child,
+html.mobile-ui .content li:has(.mobile-thread-meta) > br:last-child,
+html.mobile-ui .content dd:has(.mobile-thread-meta) > br:last-child,
+html.mobile-ui .content dt:has(.mobile-thread-meta) > br:last-child,
+html.mobile-ui .content div:has(.mobile-thread-meta) > br:last-child {
+  display:none !important;
+}
+
+
+
+
+/* v0.1.78: only the reader control bar may stick. Source-site <header> elements inside article content must scroll away normally. */
+.content header {
+  position: static !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  z-index: auto !important;
+}
+
+.youtube-open-fallback{display:block;margin:8px auto 0;padding:9px 14px;width:max-content;max-width:90%;border:1px solid #666;border-radius:8px;text-decoration:none;font-weight:700}
+.x-fallback-card{padding:10px 12px;border:1px solid #555;border-radius:10px;margin:10px 0}
+.x-fallback-note{margin-bottom:6px;opacity:.8}
+
+
+/* v0.1.81: mobile article GIFs use a consistent large display size. Display-only; acquisition/cache/playback unchanged. */
+html.mobile-ui .content .hover-gif-wrap,
+html.mobile-ui .content .prepared-gif-shell {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+html.mobile-ui .content .hover-gif-wrap > img,
+html.mobile-ui .content .prepared-gif-shell > img,
+html.mobile-ui .content img.hover-gif,
+html.mobile-ui .content img.direct-gif-preview {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  max-height: none !important;
+  height: auto !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  object-fit: contain !important;
+}
+
+/* v0.1.81: readable, compact X cards in iPhone dark mode. X only. */
+.x-static-card {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+  color: #222;
+}
+.x-static-card .x-static-meta {
+  margin: 2px 0 7px;
+  color: #6f7780;
+  font-size: .82em;
+  line-height: 1.35;
+}
+.x-static-card .x-static-text {
+  margin: 6px 0 8px;
+  color: inherit;
+  line-height: 1.55;
+}
+.x-static-card .x-static-author {
+  display: block;
+  margin: 0 0 2px;
+  color: inherit;
+}
+.x-static-card .x-static-link {
+  margin-top: 6px;
+}
+.x-static-card > .x-static-card {
+  margin: 10px 0 4px;
+}
+.x-official-embed-wrap.x-fallback-card {
+  min-height: 0 !important;
+  height: auto !important;
+  box-sizing: border-box;
+}
+html.mobile-ui .content .x-static-card,
+html.mobile-ui .content .x-fallback-card {
+  background: #17191c !important;
+  color: #f1f3f5 !important;
+  border-color: #3b4046 !important;
+  box-shadow: none !important;
+}
+html.mobile-ui .content .x-static-card .x-static-author {
+  color: #f6f7f8 !important;
+}
+html.mobile-ui .content .x-static-card .x-static-meta,
+html.mobile-ui .content .x-fallback-note {
+  color: #aeb5bd !important;
+  opacity: 1 !important;
+}
+html.mobile-ui .content .x-static-card .x-static-text {
+  color: #eceff2 !important;
+}
+html.mobile-ui .content .x-static-card a,
+html.mobile-ui .content .x-fallback-card a {
+  color: #7fb7ff !important;
+}
+html.mobile-ui .content .x-static-card > .x-static-card {
+  background: #111315 !important;
+  border-color: #343a40 !important;
+}
+
+/* v0.1.92: article reader title must always show the full thread/article title. */
+#title {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+  display: block !important;
+  max-height: none !important;
+  -webkit-line-clamp: unset !important;
+  -webkit-box-orient: initial !important;
+}
+
+/* v0.1.94: site reader comments + social cards */
+.site-feedback-section{margin:22px 0 10px;padding-top:12px;border-top:1px solid rgba(127,127,127,.28)}
+.site-feedback-heading{font-weight:700;font-size:1.05em;margin:0 0 10px}
+.site-feedback-card{margin:8px 0;padding:10px 12px;border:1px solid rgba(127,127,127,.28);border-radius:10px;background:rgba(127,127,127,.05);overflow-wrap:anywhere;font-size:1em;line-height:inherit}
+.site-feedback-meta{margin:0 0 5px;color:#777;font-size:.72em;line-height:1.45;font-weight:400}
+.site-feedback-body{margin:0;font-size:1em;line-height:inherit;color:inherit}
+.site-feedback-body>*:first-child{margin-top:0}.site-feedback-body>*:last-child{margin-bottom:0}
+.site-feedback-card>*:first-child{margin-top:0}.site-feedback-card>*:last-child{margin-bottom:0}
+.instagram-static-card{box-sizing:border-box;padding:10px 12px;border:1px solid rgba(127,127,127,.28);border-radius:12px;background:rgba(127,127,127,.05);overflow:hidden}
+html.mobile-ui .content .site-feedback-card,
+html.mobile-ui.setting-dark-mode .content .instagram-static-card{background:#17191c!important;border-color:#34383f!important;color:#f3f4f6!important}
+html.mobile-ui .content .site-feedback-card a,
+html.mobile-ui.setting-dark-mode .content .instagram-static-card a{color:#72aefc!important}
+html.mobile-ui .content .site-feedback-card{font-size:1em!important;line-height:inherit!important}
+html.mobile-ui.setting-dark-mode .content .site-feedback-meta{color:#aeb5bd!important;font-size:.72em!important;line-height:1.45!important}
+html.mobile-ui.setting-dark-mode .content .site-feedback-body{font-size:1em!important;line-height:inherit!important;color:#f3f4f6!important}
+
+/* v0.1.103: comment metadata is always compact; reconstructed comment text keeps source line breaks. */
+.site-feedback-meta{font-size:11px!important;line-height:1.35!important;font-weight:400!important}
+.site-feedback-body{white-space:pre-wrap!important}
+html.mobile-ui .content .site-feedback-meta{font-size:11px!important;line-height:1.35!important}
+
+
+/* v0.1.104: one reader-size scale for all article/comment body text.
+   Reply/comment/social metadata (number/name/date/time/ID/author) stays compact. */
+.content,
+.content :where(p,div,span,font,b,big,small,strong,em,i,u,s,del,ins,li,dd,dt,td,th,blockquote,section,article,h1,h2,h3,h4,h5,h6,a) {
+  font-size: var(--reader-user-size, 16px) !important;
+}
+.content :where(.mobile-thread-meta,.site-feedback-meta,.x-static-author,.x-static-meta) {
+  font-size: 11px !important;
+  line-height: 1.35 !important;
+  font-weight: 400 !important;
+}
+.content .site-feedback-body,
+.content .site-feedback-heading,
+.content .x-static-text,
+.content .instagram-static-fallback,
+.content .prepared-image-fallback,
+.content .x-static-fallback {
+  font-size: var(--reader-user-size, 16px) !important;
+}
+
+
+/* v0.1.111: reply metadata is independent from article body font size on PC and iPhone. */
+.content .reply-meta {
+  display:block !important;
+  box-sizing:border-box !important;
+  margin:0 0 2px !important;
+  padding:0 !important;
+  color:#7f8792 !important;
+  -webkit-text-fill-color:#7f8792 !important;
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Yu Gothic UI",Meiryo,sans-serif !important;
+  font-size:11px !important;
+  line-height:1.35 !important;
+  font-weight:400 !important;
+  letter-spacing:0 !important;
+  white-space:nowrap !important;
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  font-variant-numeric:tabular-nums !important;
+}
+
+
+
+/* v0.1.150: GOSSIP reply header (number/date/ID) stays compact even on legacy markup. */
+.content [data-gossip-reply-unit] .ent_header,
+.content .ent_res > .ent_header,
+.content .gossip-reply-meta {
+  color:#7f8792 !important;
+  -webkit-text-fill-color:#7f8792 !important;
+  font-size:11px !important;
+  line-height:1.35 !important;
+  font-weight:400 !important;
+  letter-spacing:0 !important;
+}
+
+/* v0.1.125: 2chコピペ保存道場の旧固定幅/小文字レイアウトをビューア幅へ統一。 */
+.content.site-2chcopipe,
+.content.site-2chcopipe :where(div,p,section,article,main,table,tbody,thead,tfoot,tr,td,th,ul,ol,li,dl,dt,dd,font,span,small,big) {
+  max-width:100% !important;
+  box-sizing:border-box !important;
+  font-size:var(--reader-user-size,16px) !important;
+  line-height:1.72 !important;
+}
+.content.site-2chcopipe :where(table,tbody,thead,tfoot,tr,td,th) {
+  width:100% !important;
+}
+.content.site-2chcopipe .copipe-reply-meta {
+  margin:10px 0 3px !important;
+  padding:7px 0 0 !important;
+  border-top:1px solid rgba(127,135,146,.24) !important;
+  color:#7f8792 !important;
+  -webkit-text-fill-color:#7f8792 !important;
+  font-size:11px !important;
+  line-height:1.35 !important;
+  font-weight:400 !important;
+  white-space:normal !important;
+  overflow:visible !important;
+}
+.content.site-2chcopipe .copipe-reply-meta:first-child {
+  margin-top:0 !important;
+  border-top:0 !important;
+  padding-top:0 !important;
+}
+
+
+/* v0.1.170: user-adjustable article line spacing. */
+.content{line-height:var(--reader-user-line-height,1.6)!important}
+.content :where(p,div,span,font,b,big,small,strong,em,i,u,s,del,ins,li,dd,dt,td,th,blockquote,section,article){line-height:inherit}
+
+
+/* v0.1.171: user dark mode for article reader. */
+html.setting-dark-mode,:root.setting-dark-mode{color-scheme:dark;background:#101214!important;color:#eef1f4!important}
+html.setting-dark-mode body{background:#101214!important;color:#eef1f4!important}
+html.setting-dark-mode #readerHeader{background:rgba(19,22,25,.98)!important;border-color:#343a40!important;color:#eef1f4!important}
+html.setting-dark-mode #readerHeader button{background:#20252b!important;color:#eef1f4!important;border-color:#505861!important}
+html.setting-dark-mode #readerHeader a,html.setting-dark-mode #loading,html.setting-dark-mode .meta{color:#aab1b9!important}
+html.setting-dark-mode h1,html.setting-dark-mode .content{color:#eef1f4!important}
+html.setting-dark-mode .content a{color:#8cbcff!important}
+html.setting-dark-mode .content blockquote{border-color:#4a5159!important;background:#181c20!important}
+html.setting-dark-mode .reply-meta,html.setting-dark-mode .gossip-reply-meta{color:#9aa2ab!important;-webkit-text-fill-color:#9aa2ab!important}
+/* v0.1.211: iPhone-style animated return for both the back button and right-swipe.
+   The article slides out to the right with a light trailing shadow; the list itself is
+   restored by normal history/BFCache so its saved scroll position stays untouched. */
+html.mobile-ui.reader-back-underlay {
+  overflow-x:hidden !important;
+  background:#eef0f3 !important;
+}
+html.mobile-ui.setting-dark-mode.reader-back-underlay {
+  background:#0b0d0f !important;
+}
+html.mobile-ui body.reader-back-animating {
+  position:relative;
+  z-index:1;
+  transform:translate3d(0,0,0);
+  transform-origin:left center;
+  transition:transform 220ms cubic-bezier(.22,.8,.24,1) !important;
+  will-change:transform;
+  box-shadow:-18px 0 34px rgba(0,0,0,.18);
+  backface-visibility:hidden;
+}
+html.mobile-ui body.reader-back-exit {
+  transform:translate3d(100vw,0,0) !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html.mobile-ui body.reader-back-animating { transition:none !important; }
+}
+\n\n/* v0.1.209: mobile reader theme follows the per-device dark-mode setting. */\nhtml.mobile-ui:not(.setting-dark-mode),\nhtml.mobile-ui:not(.setting-dark-mode) body { color-scheme:light; background:#fff!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) #readerHeader { background:#fff!important; color:#222!important; border-bottom-color:#ddd!important; }\nhtml.mobile-ui:not(.setting-dark-mode) #readerHeader button,\nhtml.mobile-ui:not(.setting-dark-mode) .reader-font-size-control input,\nhtml.mobile-ui:not(.setting-dark-mode) .reader-font-size-control .reader-font-step { background:#fff!important; color:#222!important; border-color:#bbb!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .reader-font-size-control { color:#666!important; }\nhtml.mobile-ui:not(.setting-dark-mode) main,\nhtml.mobile-ui:not(.setting-dark-mode) .content { background:#fff!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .content a { color:#1265b0!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .content blockquote { background:#f7f7f7!important; border-left-color:#bbb!important; color:#333!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .mobile-thread-meta,\nhtml.mobile-ui:not(.setting-dark-mode) .reply-meta,\nhtml.mobile-ui:not(.setting-dark-mode) .gossip-reply-meta { color:#777!important; -webkit-text-fill-color:#777!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .content .x-static-card,\nhtml.mobile-ui:not(.setting-dark-mode) .content .x-fallback-card,\nhtml.mobile-ui:not(.setting-dark-mode) .content .site-feedback-card,\nhtml.mobile-ui:not(.setting-dark-mode) .content .instagram-static-card { background:#fff!important; border-color:#ddd!important; color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .content .site-feedback-body { color:#222!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .content .site-feedback-meta,\nhtml.mobile-ui:not(.setting-dark-mode) .content .x-static-card .x-static-meta,\nhtml.mobile-ui:not(.setting-dark-mode) .content .x-fallback-note { color:#777!important; }\nhtml.mobile-ui:not(.setting-dark-mode) .reader-source-badge { background:#f5e9df!important; color:#8a4d16!important; border-color:#d8b28f!important; }\nhtml.mobile-ui:not(.setting-dark-mode) #originalLink { background:#fff3c9!important; color:#765500!important; border-color:#d6bc68!important; }\n
+/* v0.1.209: explicit mobile light reader overrides historical forced-dark mobile rules. */
+html.mobile-ui.setting-light-mode,
+html.mobile-ui.setting-light-mode body { color-scheme:light !important; background:#fff !important; color:#222 !important; }
+html.mobile-ui.setting-light-mode #readerHeader { background:#fff !important; color:#222 !important; border-bottom-color:#ddd !important; }
+html.mobile-ui.setting-light-mode #readerHeader button,
+html.mobile-ui.setting-light-mode .reader-font-size-control input,
+html.mobile-ui.setting-light-mode .reader-font-size-control .reader-font-step { background:#fff !important; color:#222 !important; border-color:#bbb !important; }
+html.mobile-ui.setting-light-mode .reader-font-size-control { color:#666 !important; }
+html.mobile-ui.setting-light-mode main,
+html.mobile-ui.setting-light-mode .content { background:#fff !important; color:#222 !important; }
+html.mobile-ui.setting-light-mode .content a { color:#1265b0 !important; }
+html.mobile-ui.setting-light-mode .content blockquote { background:#f7f7f7 !important; border-left-color:#bbb !important; color:#333 !important; }
+html.mobile-ui.setting-light-mode .mobile-thread-meta,
+html.mobile-ui.setting-light-mode .reply-meta,
+html.mobile-ui.setting-light-mode .gossip-reply-meta { color:#777 !important; -webkit-text-fill-color:#777 !important; }
+html.mobile-ui.setting-light-mode .content .x-static-card,
+html.mobile-ui.setting-light-mode .content .x-fallback-card,
+html.mobile-ui.setting-light-mode .content .site-feedback-card,
+html.mobile-ui.setting-light-mode .content .instagram-static-card { background:#fff !important; border-color:#ddd !important; color:#222 !important; }
+html.mobile-ui.setting-light-mode .content .site-feedback-body { color:#222 !important; }
+
+/* v0.1.209: definitive theme ownership.
+   Historical phone-dark rules no longer decide theme; setting-light-mode wins. */
+@media (max-width:860px){
+  html.setting-light-mode, html.setting-light-mode body{
+    color-scheme:light !important; background:#fff !important; color:#222 !important;
+  }
+  html.setting-light-mode #readerHeader,
+  html.setting-light-mode main,
+  html.setting-light-mode .content{
+    background:#fff !important; color:#222 !important;
+  }
+  html.setting-light-mode #readerHeader{
+    border-bottom-color:#ddd !important;
+  }
+  html.setting-light-mode #readerHeader button,
+  html.setting-light-mode .reader-font-size-control input,
+  html.setting-light-mode .reader-font-size-control .reader-font-step{
+    background:#fff !important; color:#222 !important; border-color:#bbb !important;
+  }
+  html.setting-light-mode .content a{color:#1265b0 !important;}
+  html.setting-light-mode .content blockquote{background:#f7f7f7 !important;color:#333 !important;border-left-color:#bbb !important;}
+}
+html.setting-dark-mode #readerHeader,
+html.setting-dark-mode main,
+html.setting-dark-mode .content{background:#101214 !important;color:#eef1f4 !important;}
+/* Dark mode: neutralize common source HTML white panels, without touching media. */
+html.setting-dark-mode .content div[style*="background-color: rgb(255, 255, 255)"],
+html.setting-dark-mode .content div[style*="background-color:#fff"],
+html.setting-dark-mode .content div[style*="background-color: #fff"],
+html.setting-dark-mode .content section[style*="background-color: rgb(255, 255, 255)"],
+html.setting-dark-mode .content table[style*="background-color: rgb(255, 255, 255)"]{
+  background:#171a1e !important; color:#eef1f4 !important;
+}
+
+/* v0.1.209: phone light mode final override.
+   Keep mobile layout, but force all main surfaces/controls back to light when dark mode is OFF. */
+@media (max-width:860px){
+  html.setting-light-mode,
+  html.setting-light-mode body{
+    color-scheme:light !important;
+    background:#fff !important;
+    color:#222 !important;
+  }
+  html.setting-light-mode #readerHeader,
+  html.setting-light-mode main,
+  html.setting-light-mode .content,
+  html.setting-light-mode .content > *,
+  html.setting-light-mode .site-feedback-card,
+  html.setting-light-mode .x-static-card,
+  html.setting-light-mode .x-fallback-card,
+  html.setting-light-mode .instagram-static-card{
+    background-color:#fff !important;
+    color:#222 !important;
+    -webkit-text-fill-color:currentColor !important;
+  }
+  html.setting-light-mode #readerHeader{
+    border-color:#ddd !important;
+  }
+  html.setting-light-mode #readerHeader button,
+  html.setting-light-mode .reader-font-size-control input,
+  html.setting-light-mode .reader-font-size-control .reader-font-step{
+    background:#fff !important;
+    color:#222 !important;
+    border-color:#bbb !important;
+  }
+  html.setting-light-mode .mobile-thread-meta,
+  html.setting-light-mode .reply-meta,
+  html.setting-light-mode .gossip-reply-meta,
+  html.setting-light-mode .site-feedback-meta{
+    color:#777d84 !important;
+    -webkit-text-fill-color:#777d84 !important;
+    background:transparent !important;
+  }
+  html.setting-light-mode .content a{color:#1265b0 !important;}
+  html.setting-light-mode .content blockquote{
+    background:#f7f7f7 !important;
+    color:#333 !important;
+    border-left-color:#bbb !important;
+  }
+}
+
+/* v0.1.209: press-and-hold compact metadata to temporarily enlarge to article body size. */
+.content :where(.mobile-thread-meta,.reply-meta,.gossip-reply-meta,.site-feedback-meta){
+  -webkit-user-select:none;
+  user-select:none;
+  -webkit-touch-callout:none;
+  transition:font-size .06s linear,line-height .06s linear,background-color .06s linear,padding .06s linear;
+  touch-action:manipulation;
+}
+.content :where(.mobile-thread-meta,.reply-meta,.gossip-reply-meta,.site-feedback-meta).meta-press-preview{
+  font-size:var(--reader-user-size,16px) !important;
+  line-height:1.5 !important;
+  white-space:normal !important;
+  overflow:visible !important;
+  text-overflow:clip !important;
+  position:relative !important;
+  z-index:20 !important;
+  padding:3px 4px !important;
+  border-radius:4px !important;
+}
+html.setting-dark-mode .content :where(.mobile-thread-meta,.reply-meta,.gossip-reply-meta,.site-feedback-meta).meta-press-preview{
+  background:#25292e !important;
+}
+html.setting-light-mode .content :where(.mobile-thread-meta,.reply-meta,.gossip-reply-meta,.site-feedback-meta).meta-press-preview{
+  background:#f1f3f5 !important;
+}
+
+/* v0.1.209: reliable press-to-preview for compact reply metadata. */
+html.mobile-ui body .content .mobile-thread-meta.meta-press-preview,
+html.mobile-ui body .content .reply-meta.meta-press-preview,
+html.mobile-ui body .content .gossip-reply-meta.meta-press-preview,
+html.mobile-ui body .content .site-feedback-meta.meta-press-preview {
+  font-size: var(--reader-user-size, 16px) !important;
+  line-height: 1.5 !important;
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  padding: 3px 4px !important;
+  position: relative !important;
+  z-index: 30 !important;
+}
+
+
+/* v0.1.222: one user-selected line height for ordinary article text on every source.
+   Special metadata/cards/AA/media keep their dedicated rules. */
+.content,
+body.embedded .content,
+html.mobile-ui .content {
+  line-height: var(--reader-user-line-height, 1.6) !important;
+}
+.content :where(p,div,span,font,b,big,small,strong,em,i,u,s,del,ins,li,dd,dt,td,th,section,article,h1,h2,h3,h4,h5,h6,a) {
+  line-height: inherit !important;
+}
+/* Source-specific body rules must not defeat the user's article line-height setting. */
+.content.site-2chcopipe,
+.content.site-2chcopipe :where(div,p,section,article,main,table,tbody,thead,tfoot,tr,td,th,ul,ol,li,dl,dt,dd,font,span,small,big) {
+  line-height: var(--reader-user-line-height, 1.6) !important;
+}
+/* Normal paragraphs use the same compact vertical rhythm across providers. */
+.content p:not(.site-feedback-meta):not(.site-feedback-body) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+/* Compact metadata is intentionally independent from article body spacing. */
+.content :where(.mobile-thread-meta,.reply-meta,.gossip-reply-meta,.site-feedback-meta) {
+  line-height: 1.35 !important;
+}
+/* AA/pre and rich embeds are intentionally excluded from the body line-height normalization. */
+.content pre { line-height: 1.15 !important; }
+.content .x-static-text { line-height: 1.55 !important; }
+
+
+/* v0.1.223: user-adjustable compact reply metadata (number/date/time/ID). */
+.content :where(.mobile-thread-meta,.reply-meta,.gossip-reply-meta,.site-feedback-meta,.copipe-reply-meta),
+.content [data-gossip-reply-unit] .ent_header,
+.content .ent_res > .ent_header {
+  font-size: var(--reader-meta-size, 11px) !important;
+}
+
+/* v0.1.223: provider-independent ordinary-text vertical rhythm.
+   JS marks only non-media/non-AA/non-embed flow nodes with this class. */
+.content .matome-normal-flow {
+  line-height: inherit !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  height: auto !important;
+}

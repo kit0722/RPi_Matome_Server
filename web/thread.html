@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta name="theme-color" content="#0f1011">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script>(function(){var ua=navigator.userAgent||'';var m=/iPhone|iPod|Android|Mobile/i.test(ua)||(navigator.maxTouchPoints>0&&Math.min(screen.width,screen.height)<=1024);if(m)document.documentElement.classList.add('mobile-ui');})();</script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <title>5ch 自動まとめ</title>
+  <link rel="stylesheet" href="thread.css?v=0250">
+</head>
+<body>
+  <header class="thread-toolbar">
+    <button id="backBtn" class="thread-back" type="button">← 戻る</button>
+    <label class="reader-font-size-control" title="記事文字サイズ"><span>文字</span><button class="reader-font-step reader-font-dec" type="button" aria-label="文字を小さく">−</button><input id="readerFontSizeInput" type="number" min="13" max="41" step="1" inputmode="numeric" aria-label="記事文字サイズ"><button class="reader-font-step reader-font-inc" type="button" aria-label="文字を大きく">＋</button></label>
+    <div class="mode-tabs" role="tablist" aria-label="表示切り替え">
+      <button id="aiBtn" class="mode-btn ai" type="button">AIまとめ</button>
+      <label class="ai-level-wrap" title="AIまとめで残す量">
+        <span>量</span>
+        <select id="aiLevel" aria-label="AIまとめ量">
+          <option value="30">少なめ 30%</option>
+          <option value="50">標準 50%</option>
+          <option value="70">多め 70%</option>
+        </select>
+      </label>
+      <button id="summaryBtn" class="mode-btn active" type="button">自動まとめ</button>
+      <button id="allBtn" class="mode-btn" type="button">全レス</button>
+    </div>
+    <div class="toolbar-spacer"></div>
+    <span id="countInfo" class="count-info"></span>
+    <a id="originalLink" href="#" target="_blank" rel="noopener noreferrer">5chで開く ↗</a>
+  </header>
+
+  <main>
+    <div id="loading" class="loading">5chスレを取得中...</div>
+    <section id="thread" hidden>
+      <div class="thread-meta-row">
+        <span id="board"></span>
+        <span id="speed"></span>
+      </div>
+      <h1 id="title"></h1>
+      <div id="summaryNote" class="summary-note"></div>
+      <div id="posts" class="posts"></div>
+    </section>
+    <div id="error" class="error" hidden></div>
+  </main>
+  <script src="web_shim.js?v=0250"></script>
+  <script src="thread.js?v=0250"></script>
+</body>
+</html>

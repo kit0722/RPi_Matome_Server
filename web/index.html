@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#101112">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest?v=0270">
+  <script>
+    (function(){
+      var ua=navigator.userAgent||'';
+      var ipad=/iPad/i.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+      var phone=/iPhone|iPod/i.test(ua)||(/Android/i.test(ua)&&/Mobile/i.test(ua));
+      if(ipad) document.documentElement.classList.add('tablet-ui');
+      else if(phone) document.documentElement.classList.add('mobile-ui');
+      var dark=ipad||phone;
+      document.documentElement.classList.add(dark?'setting-dark-mode':'setting-light-mode');
+    })();
+  </script>
+  <title>2chまとめ 2ペイン + 5ch自動まとめ</title>
+  <link rel="stylesheet" href="index.css?v=0301">
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <h1>2chまとめ</h1>
+      <span id="newBadge" class="new-badge update-state" data-mode="updated">更新 --:--</span>
+      <script>
+        (()=>{
+          const b=document.getElementById('newBadge');
+          if(!b) return;
+          let t=0; try{t=Number(localStorage.getItem('matomeLastListDisplayAt')||0);}catch{}
+          if(!t){ b.textContent='更新 --:--'; return; }
+          const d=new Date(t);
+          b.textContent='更新 '+new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',hour12:false}).format(d);
+        })();
+      </script>
+      <div class="article-search" role="search">
+        <input id="articleSearch" type="search" placeholder="記事検索" aria-label="記事検索" autocomplete="off">
+        <button id="articleSearchClear" class="article-search-clear" type="button" aria-label="検索をクリア" title="検索をクリア" hidden>×</button>
+      </div>
+      <nav id="desktopTopNav" class="desktop-top-nav" aria-label="PCナビゲーション">
+        <button type="button" class="active" data-desktop-nav="home">ホーム</button>
+        <button type="button" data-desktop-nav="sites">サイト一覧</button>
+        <button type="button" aria-disabled="true">お気に入り</button>
+        <button type="button" data-desktop-nav="settings">設定</button>
+      </nav>
+      <div class="pager pager-top" aria-label="ページ切り替え">
+        <button id="prevBtn" type="button">← 前</button>
+        <span id="pageInfo">1 / 1</span>
+        <button id="nextBtn" type="button">次 →</button>
+      </div>
+      <select id="sourceFilter" aria-label="サイト絞り込み" hidden>
+        <option value="">全サイト</option>
+      </select>
+      <button id="urlTestBtn" class="url-test-btn" type="button" title="一覧から消えた記事URLを直接確認">URL確認</button>
+      <label class="font-size-control" title="文字サイズ">
+        <span>文字</span>
+        <button class="font-step font-dec" type="button" aria-label="文字を小さく">−</button>
+        <input id="fontSizeInput" type="number" min="13" max="32" step="1" inputmode="numeric" aria-label="文字サイズ">
+        <button class="font-step font-inc" type="button" aria-label="文字を大きく">＋</button>
+      </label>
+    </div>
+    <div class="source-tabs-row">
+      <div id="sourceTabs" class="source-tabs" aria-label="サイト切り替え"></div>
+      <button id="sitePickerBtn" class="site-picker-btn" type="button" aria-expanded="false">表示サイト</button>
+    </div>
+    <div id="sitePickerPanel" class="site-picker-panel" hidden>
+      <div class="site-picker-head">
+        <b>表示するサイト</b>
+        <span>チェックを外すとPC/スマホ両方から除外・先読み対象外</span>
+        <button id="sitePickerClose" type="button">閉じる</button>
+      </div>
+      <div class="site-picker-actions">
+        <button id="siteSelectAll" type="button">全選択</button>
+        <button id="siteClearAll" type="button">全解除</button>
+      </div>
+      <div id="sitePickerList" class="site-picker-list"></div>
+    </div>
+    <div class="subbar">
+      <span id="status">読み込み中...</span>
+      <span id="updated"></span>
+    </div>
+  </header>
+
+  <main class="split-layout">
+    <section id="leftPane" class="left-pane">
+      <div id="error" class="error" hidden></div>
+      <div id="list"></div>
+      <div class="pager pager-bottom" aria-label="ページ切り替え">
+        <button id="prevBtnBottom" type="button">← 前</button>
+        <span id="pageInfoBottom">1 / 1</span>
+        <button id="nextBtnBottom" type="button">次 →</button>
+      </div>
+    </section>
+
+    <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="左右幅を調整" tabindex="0"><span></span></div>
+
+    <section class="right-pane">
+      <div id="readerEmpty" class="reader-empty">
+        <div class="reader-empty-box">
+          <div class="reader-empty-title">記事を選ぶとここに本文を表示</div>
+          <div class="reader-empty-sub">左の一覧はそのまま残り、右だけ切り替わります。</div>
+        </div>
+      </div>
+      <iframe id="readerFrame" title="記事本文" src="about:blank"></iframe>
+    </section>
+  </main>
+
+  <!-- v0.1.163: smartphone site picker + desktop top navigation. -->
+  <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="スマホナビゲーション">
+    <button type="button" class="active" data-mobile-nav="home" aria-label="ホーム"><b>⌂</b><span>ホーム</span></button>
+    <button type="button" data-mobile-nav="sites" aria-label="サイト一覧"><b>▦</b><span>サイト一覧</span></button>
+    <button type="button" aria-disabled="true" class="pending-nav"><b>…</b><span>未定</span></button>
+    <button type="button" data-mobile-nav="settings"><b>⚙</b><span>設定</span></button>
+  </nav>
+
+  <div id="displaySettingsPanel" class="display-settings-panel" hidden>
+    <div class="display-settings-card" role="dialog" aria-modal="true" aria-labelledby="displaySettingsTitle">
+      <div class="display-settings-head">
+        <b id="displaySettingsTitle">設定</b>
+        <button id="displaySettingsClose" type="button" aria-label="設定を閉じる">閉じる</button>
+      </div>
+      <div class="display-settings-row">
+        <div>
+          <strong>UI文字サイズ</strong>
+          <small>サイト一覧・件数・状態表示など</small>
+        </div>
+        <div class="display-settings-stepper">
+          <button id="settingsUiFontDec" type="button" aria-label="UI文字を小さく">−</button>
+          <input id="settingsUiFontSize" type="number" min="12" max="28" step="1" inputmode="numeric" aria-label="UI文字サイズ">
+          <button id="settingsUiFontInc" type="button" aria-label="UI文字を大きく">＋</button>
+        </div>
+      </div>
+      <div class="display-settings-row">
+        <div>
+          <strong>記事本文の行間</strong>
+          <small>1.3〜2.2</small>
+        </div>
+        <div class="display-settings-stepper">
+          <button id="settingsReaderLineDec" type="button" aria-label="本文行間を狭く">−</button>
+          <input id="settingsReaderLineHeight" type="number" min="1.3" max="2.2" step="0.1" inputmode="decimal" aria-label="記事本文の行間">
+          <button id="settingsReaderLineInc" type="button" aria-label="本文行間を広く">＋</button>
+        </div>
+      </div>
+      <div class="display-settings-row">
+        <div>
+          <strong>ID・日時の文字サイズ</strong>
+          <small>レス番号・日時・IDの小さい行</small>
+        </div>
+        <div class="display-settings-stepper">
+          <button id="settingsMetaFontDec" type="button" aria-label="ID・日時を小さく">−</button>
+          <input id="settingsMetaFontSize" type="number" min="8" max="18" step="1" inputmode="numeric" aria-label="ID・日時の文字サイズ">
+          <button id="settingsMetaFontInc" type="button" aria-label="ID・日時を大きく">＋</button>
+        </div>
+      </div>
+      <div class="display-settings-row">
+        <div>
+          <strong>設定画面の大きさ</strong>
+          <small>設定カード全体の拡大・縮小</small>
+        </div>
+        <div class="display-settings-stepper">
+          <button id="settingsPanelScaleDec" type="button" aria-label="設定画面を小さく">−</button>
+          <input id="settingsPanelScale" type="number" min="80" max="130" step="5" inputmode="numeric" aria-label="設定画面の大きさ">
+          <button id="settingsPanelScaleInc" type="button" aria-label="設定画面を大きく">＋</button>
+        </div>
+      </div>
+      <div class="display-settings-row display-settings-toggle-row">
+        <div><strong>既読を非表示</strong><small>読んだ記事を一覧から隠す</small></div>
+        <label class="settings-switch"><input id="hideReadArticles" type="checkbox"><span></span></label>
+      </div>
+      <div class="display-settings-row display-settings-toggle-row">
+        <div><strong>サイト一覧の件数</strong><small>各サイト横の記事件数</small></div>
+        <label class="settings-switch"><input id="settingsShowSiteCounts" type="checkbox"><span></span></label>
+      </div>
+      <div class="display-settings-row display-settings-toggle-row">
+        <div><strong>状態表示</strong><small>完成件数・処理待ちなど</small></div>
+        <label class="settings-switch"><input id="settingsShowStatus" type="checkbox"><span></span></label>
+      </div>
+      <div class="display-settings-row display-settings-toggle-row">
+        <div><strong>5ch勢いボタン</strong><small>画面端の5ch勢いタブ</small></div>
+        <label class="settings-switch"><input id="settingsShowIkioi" type="checkbox"><span></span></label>
+      </div>
+      <div class="display-settings-row display-settings-toggle-row">
+        <div><strong>更新時刻</strong><small>上部の更新表示</small></div>
+        <label class="settings-switch"><input id="settingsShowUpdate" type="checkbox"><span></span></label>
+      </div>
+      <div class="display-settings-actions">
+        <button id="settingsResetDisplay" type="button">設定を初期値に戻す</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="ikioiTab" class="ikioi-tab" type="button" aria-expanded="false" aria-controls="ikioiDrawer">
+    <span>5ch勢い</span><b>‹</b>
+  </button>
+
+  <aside id="ikioiDrawer" class="ikioi-drawer" aria-hidden="true">
+    <div class="ikioi-head">
+      <div>
+        <div class="ikioi-title">5ch勢い</div>
+        <div class="ikioi-subtitle">今5chで盛り上がっているスレ</div>
+      </div>
+      <button id="ikioiClose" class="ikioi-close" type="button" aria-label="閉じる">×</button>
+    </div>
+    <div id="ikioiCats" class="ikioi-cats" aria-label="勢いカテゴリ"></div>
+    <div class="ikioi-tools">
+      <span id="ikioiUpdated">未取得</span>
+      <button id="ikioiRefresh" type="button">更新</button>
+    </div>
+    <div id="ikioiError" class="ikioi-error" hidden></div>
+    <div id="ikioiList" class="ikioi-list">
+      <div class="ikioi-placeholder">「5ch勢い」を開くと取得します。</div>
+    </div>
+    <div class="ikioi-source">データ: ikioi.jp</div>
+  </aside>
+
+  <script>
+    // v0.1.33 hard UI bootstrap: do not depend on cached CSS for these two controls.
+    (function(){
+      const phone = document.documentElement.classList.contains('mobile-ui');
+      const badge = document.getElementById('newBadge');
+      const forceBadge = () => {
+        if (!badge) return;
+        badge.hidden = false;
+        badge.style.setProperty('display','inline-flex','important');
+        badge.style.setProperty('align-items','center','important');
+        badge.style.setProperty('justify-content','center','important');
+        badge.style.setProperty('box-sizing','border-box','important');
+        badge.style.setProperty('width','116px','important');
+        badge.style.setProperty('min-width','116px','important');
+        badge.style.setProperty('max-width','116px','important');
+        badge.style.setProperty('min-height','28px','important');
+        badge.style.setProperty('visibility','visible','important');
+        badge.style.setProperty('opacity','1','important');
+        badge.style.setProperty('flex','0 0 116px','important');
+      };
+      const forceIkioi = () => {
+        if (!phone) return;
+        const tab = document.getElementById('ikioiTab');
+        if (!tab) return;
+        tab.style.setProperty('position','fixed','important');
+        tab.style.setProperty('top','auto','important');
+        tab.style.setProperty('bottom','calc(70px + env(safe-area-inset-bottom, 0px))','important');
+        tab.style.setProperty('transform','none','important');
+      };
+      forceBadge();
+      forceIkioi();
+      window.__matomeForceHeaderBadge = forceBadge;
+      window.__matomeForcePhoneIkioi = forceIkioi;
+      window.addEventListener('resize', forceIkioi, {passive:true});
+      window.addEventListener('pageshow', () => { forceBadge(); forceIkioi(); });
+    })();
+  </script>
+  <script src="web_shim.js?v=0264"></script>
+  <script src="index.js?v=0302"></script>
+</body>
+</html>
