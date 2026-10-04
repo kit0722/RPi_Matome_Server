@@ -1131,7 +1131,7 @@ html.mobile-ui.setting-dark-mode .display-settings-actions button{background:#2c
 html.setting-hide-site-counts .site-picker-item .count{display:none!important}
 html.setting-hide-status .subbar{display:none!important}
 html.setting-hide-ikioi .ikioi-tab,html.setting-hide-ikioi .ikioi-drawer{display:none!important}
-html.setting-hide-update #updateBadge{display:none!important}
+html.setting-hide-update #newBadge{display:none!important}
 
 
 /* v0.1.171: settings-card scale + full dark mode. No scroll-model/status-bar changes. */
@@ -1368,27 +1368,12 @@ html.mobile-ui .site-picker-panel.mobile-nav-open {
 }
 
 
-/* v0.1.226: update time and new-item notification are independent controls. */
-#updateBadge {
+/* v0.1.227: one shared slot switches between update time and new-item notice. */
+#newBadge {
   display:inline-flex !important;
   visibility:visible !important;
   opacity:1 !important;
-  background:#ececec !important;
-  color:#666 !important;
-  -webkit-text-fill-color:#666 !important;
   cursor:pointer !important;
-}
-#newBadge[hidden] { display:none !important; }
-html.mobile-ui #updateBadge {
-  flex:0 0 78px !important;
-  width:78px !important;
-  min-width:78px !important;
-  max-width:78px !important;
-  padding:6px 4px !important;
-  font-size:11px !important;
-  background:#2a2d31 !important;
-  color:#c9cdd2 !important;
-  -webkit-text-fill-color:#c9cdd2 !important;
 }
 html.mobile-ui #newBadge {
   flex:0 0 92px !important;
@@ -1398,5 +1383,4 @@ html.mobile-ui #newBadge {
   padding:6px 4px !important;
   font-size:11px !important;
 }
-html.mobile-ui #newBadge[hidden] { display:none !important; }
-html.setting-hide-update #updateBadge { display:none !important; }
+html.setting-hide-update #newBadge { display:none !important; }
