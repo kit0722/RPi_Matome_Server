@@ -230,13 +230,14 @@
         badge.style.setProperty('align-items','center','important');
         badge.style.setProperty('justify-content','center','important');
         badge.style.setProperty('box-sizing','border-box','important');
-        badge.style.setProperty('width','116px','important');
-        badge.style.setProperty('min-width','116px','important');
-        badge.style.setProperty('max-width','116px','important');
+        const badgeWidth = phone ? '92px' : '116px';
+        badge.style.setProperty('width',badgeWidth,'important');
+        badge.style.setProperty('min-width',badgeWidth,'important');
+        badge.style.setProperty('max-width',badgeWidth,'important');
         badge.style.setProperty('min-height','28px','important');
         badge.style.setProperty('visibility','visible','important');
         badge.style.setProperty('opacity','1','important');
-        badge.style.setProperty('flex','0 0 116px','important');
+        badge.style.setProperty('flex','0 0 '+badgeWidth,'important');
       };
       const forceIkioi = () => {
         if (!phone) return;
