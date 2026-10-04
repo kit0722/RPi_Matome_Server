@@ -148,7 +148,6 @@ const pageInfoBottom = document.getElementById("pageInfoBottom");
 const updatedEl = document.getElementById("updated");
 const errorEl = document.getElementById("error");
 const refreshBtn = document.getElementById("refreshBtn");
-const updateBadge = document.getElementById("updateBadge");
 const newBadge = document.getElementById("newBadge");
 const articleSearch = document.getElementById("articleSearch");
 const articleSearchClear = document.getElementById("articleSearchClear");
@@ -1962,24 +1961,25 @@ function formatUpdateBadgeTime(ms=Date.now()) {
 
 function showUpdateBadge(ms=0) {
   const shownAt = Number(ms) || lastListDisplayTime() || 0;
-  if (!updateBadge) return;
-  updateBadge.hidden = false;
-  updateBadge.textContent = shownAt ? `更新 ${formatUpdateBadgeTime(shownAt)}` : "更新 --:--";
-  updateBadge.title = "記事一覧を更新した時刻";
-  updateBadge.style.setProperty("background", isMobileLayout() ? "#2a2d31" : "#ececec", "important");
-  updateBadge.style.setProperty("color", isMobileLayout() ? "#c9cdd2" : "#666", "important");
-  updateBadge.style.setProperty("-webkit-text-fill-color", isMobileLayout() ? "#c9cdd2" : "#666", "important");
+  newBadge.hidden = false;
+  newBadge.dataset.mode = "updated";
+  newBadge.classList.add("update-state");
+  newBadge.textContent = shownAt ? `更新 ${formatUpdateBadgeTime(shownAt)}` : "更新 --:--";
+  newBadge.title = "記事一覧を更新した時刻";
+  window.__matomeForceHeaderBadge?.();
+  newBadge.style.setProperty("background", isMobileLayout() ? "#2a2d31" : "#ececec", "important");
+  newBadge.style.setProperty("color", isMobileLayout() ? "#c9cdd2" : "#666", "important");
+  newBadge.style.setProperty("-webkit-text-fill-color", isMobileLayout() ? "#c9cdd2" : "#666", "important");
 }
 
 function hideNewBadge(ms=Date.now()) {
-  newBadge.hidden = true;
-  newBadge.dataset.mode = "idle";
   showUpdateBadge(ms);
 }
 
 function showNewBadge(count=0) {
   newBadge.hidden = false;
   newBadge.dataset.mode = "new";
+  newBadge.classList.remove("update-state");
   newBadge.textContent = count > 0 ? `新着あり ${count}件` : "新着あり";
   newBadge.title = "新着記事を表示";
   window.__matomeForceHeaderBadge?.();
@@ -2517,8 +2517,6 @@ async function consumeServerNewBuffer() {
     if(res.ok){const data=await res.json();rememberServerBufferCutoff(data?.new_buffer_cutoff);}
   } catch {}
 }
-
-updateBadge?.addEventListener("click", () => forceLatestListTop());
 
 newBadge.addEventListener("click", async () => {
   // v0.1.185: 新着が無い「更新 HH:MM」状態では、同じボタンで一覧先頭へ戻る。
