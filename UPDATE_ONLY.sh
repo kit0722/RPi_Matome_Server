@@ -12,9 +12,9 @@ PY
 echo '反映確認中（準備用ブラウザの起動を待ちます）'
 ok=0
 for i in $(seq 1 60); do
-  if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("version")=="0.1.226" and d.get("publication_mode")=="ready-only" else 1)' 2>/dev/null \
-    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.js?v=0303' \
-    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.css?v=0302' \
+  if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("version")=="0.1.227" and d.get("publication_mode")=="ready-only" else 1)' 2>/dev/null \
+    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.js?v=0304' \
+    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.css?v=0303' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'reader.css?v=0300' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'ready_viewer.js?v=0300' \
     && sudo systemctl is-active --quiet rpi-matome.service \
@@ -30,11 +30,11 @@ if [ "$ok" -ne 1 ]; then
   sudo systemctl status rpi-matome.service rpi-matome-prepare.service --no-pager -l || true
   exit 1
 fi
-echo '反映確認: v0.1.226 OK'
+echo '反映確認: v0.1.227 OK'
 echo '準備サービス起動済み。完成した記事から一覧に表示します。'
 echo "更新完了: http://$(hostname -I | awk '{print $1}'):${PORT}/"
 
-# v0.1.226: keep only the just-installed distribution archive/folder.
+# v0.1.227: keep only the just-installed distribution archive/folder.
 # Runtime files under /opt/rpi-matome and its cache/database are never touched here.
 BASE_DIR="$(cd .. && pwd)"
 KEEP_DIR="$(basename "$PWD")"
