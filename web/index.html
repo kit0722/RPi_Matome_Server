@@ -20,17 +20,16 @@
     })();
   </script>
   <title>2chまとめ 2ペイン + 5ch自動まとめ</title>
-  <link rel="stylesheet" href="index.css?v=0302">
+  <link rel="stylesheet" href="index.css?v=0303">
 </head>
 <body>
   <header>
     <div class="topbar">
       <h1>2chまとめ</h1>
-      <span id="updateBadge" class="new-badge update-state" data-mode="updated">更新 --:--</span>
-      <span id="newBadge" class="new-badge" data-mode="idle" hidden>新着あり</span>
+      <span id="newBadge" class="new-badge update-state" data-mode="updated">更新 --:--</span>
       <script>
         (()=>{
-          const b=document.getElementById('updateBadge');
+          const b=document.getElementById('newBadge');
           if(!b) return;
           let t=0; try{t=Number(localStorage.getItem('matomeLastListDisplayAt')||0);}catch{}
           if(!t){ b.textContent='更新 --:--'; return; }
@@ -225,7 +224,6 @@
       const badge = document.getElementById('newBadge');
       const forceBadge = () => {
         if (!badge) return;
-        if (badge.hidden) return;
         badge.style.setProperty('display','inline-flex','important');
         badge.style.setProperty('align-items','center','important');
         badge.style.setProperty('justify-content','center','important');
@@ -257,6 +255,6 @@
     })();
   </script>
   <script src="web_shim.js?v=0264"></script>
-  <script src="index.js?v=0303"></script>
+  <script src="index.js?v=0304"></script>
 </body>
 </html>
