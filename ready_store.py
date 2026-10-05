@@ -1067,7 +1067,23 @@ class ReadyStore:
             was_completed = bool(previous['body_file'] and previous['ready_time'])
             publish_time = previous['ready_time'] if was_completed else now
             marker=self._buffer_cutoff(c)
-            release_time=float(previous['release_time'] or previous['ready_time'] or 0) if was_completed else (publish_time if marker is None else 0)
+            if was_completed:
+                release_time=float(previous['release_time'] or previous['ready_time'] or 0)
+            elif marker is None:
+                release_time=publish_time
+            else:
+                # v0.1.232: while standby is still being built, do not make genuinely
+                # current articles wait behind the hidden queue. Fresh source articles
+                # publish immediately (up to the visible-new cap); older catch-up work
+                # is kept hidden and becomes the standby stock.
+                visible_now=int(c.execute("""SELECT COUNT(*) FROM articles
+                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND release_time>? AND state IN ('ready','retry','preparing')""",
+                    (VIEW_SCHEMA_MIN,marker)).fetchone()[0] or 0)
+                source_time=float(previous['source_time'] or 0)
+                source_age=max(0.0,now-source_time) if source_time>0 else 10**12
+                live_arrival=source_age<=20*60*1000
+                release_time=publish_time if live_arrival and visible_now<MAX_NEW_BUFFER else 0
             revision_seed = json.dumps({
                 'title': snapshot.get('title') or '',
                 'html': snapshot.get('html') or '',
@@ -1151,7 +1167,7 @@ class ReadyStore:
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time<=0 AND state IN ('ready','retry','preparing')""",
                 (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
-            interval=10 if standby>=max(250,target//2) else 15 if standby>=max(75,target//5) else 30
+            interval=10 if standby>=200 else 15 if standby>=50 else 30
             last_row=c.execute("SELECT value FROM status WHERE key='standby_last_release_ms'").fetchone()
             try:last=float(json.loads(last_row['value'])) if last_row else 0
             except Exception:last=0
@@ -1161,7 +1177,7 @@ class ReadyStore:
             row=c.execute("""SELECT url FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time<=0 AND state='ready'
-              ORDER BY source_time ASC,ready_time ASC,url LIMIT 1""",(VIEW_SCHEMA_MIN,)).fetchone()
+              ORDER BY source_time DESC,ready_time DESC,url LIMIT 1""",(VIEW_SCHEMA_MIN,)).fetchone()
             if not row:
                 return {'released':False,'new_buffer':visible,'standby':standby,'standby_target':target,
                         'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}

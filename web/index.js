@@ -215,7 +215,7 @@ let sitePrefsLoaded = false;
 let newCheckRunning = false;
 let newCheckTimer = null;
 let pendingFreshItems = null;
-const NEW_CHECK_MS = 15000;
+const NEW_CHECK_MS = 5000;
 const MOBILE_RETURN_ITEMS_KEY = 'matomeReturnItems_v44';
 let loadToken = 0;
 let lastRenderKey = "";
@@ -2249,6 +2249,7 @@ const mobileBottomNav = document.getElementById('mobileBottomNav');
 const desktopTopNav = document.getElementById('desktopTopNav');
 const displaySettingsPanel = document.getElementById('displaySettingsPanel');
 const displaySettingsClose = document.getElementById('displaySettingsClose');
+const displaySettingsBack = document.getElementById('displaySettingsBack');
 const settingsListFontSize = document.getElementById('settingsListFontSize');
 const settingsListFontDec = document.getElementById('settingsListFontDec');
 const settingsListFontInc = document.getElementById('settingsListFontInc');
@@ -2434,8 +2435,28 @@ function openDisplaySettings() {
 function closeDisplaySettings() {
   if (displaySettingsPanel) displaySettingsPanel.hidden = true;
 }
-displaySettingsClose?.addEventListener('click', () => { closeDisplaySettings(); setDesktopNavActive('home'); setMobileNavActive('home'); });
-displaySettingsPanel?.addEventListener('click', e => { if (e.target === displaySettingsPanel) { closeDisplaySettings(); setDesktopNavActive('home'); setMobileNavActive('home'); } });
+function leaveDisplaySettings(){
+  closeDisplaySettings();
+  setDesktopNavActive('home');
+  setMobileNavActive('home');
+}
+displaySettingsClose?.addEventListener('click', leaveDisplaySettings);
+displaySettingsBack?.addEventListener('click', leaveDisplaySettings);
+displaySettingsPanel?.addEventListener('click', e => { if (e.target === displaySettingsPanel) leaveDisplaySettings(); });
+document.addEventListener('keydown',e=>{if(e.key==='Escape' && displaySettingsPanel && !displaySettingsPanel.hidden)leaveDisplaySettings();});
+
+// iPhone/iPad共通: 設定を開いている時だけ左端から右へスワイプで戻る。
+let settingsBackSwipeStart=null;
+displaySettingsPanel?.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='mouse')return;
+  if(e.clientX<=54)settingsBackSwipeStart={x:e.clientX,y:e.clientY,id:e.pointerId};
+},{passive:true});
+displaySettingsPanel?.addEventListener('pointerup',e=>{
+  const s=settingsBackSwipeStart;settingsBackSwipeStart=null;
+  if(!s || s.id!==e.pointerId)return;
+  if(e.clientX-s.x>=72 && Math.abs(e.clientY-s.y)<=80)leaveDisplaySettings();
+},{passive:true});
+displaySettingsPanel?.addEventListener('pointercancel',()=>{settingsBackSwipeStart=null;},{passive:true});
 settingsListFontSize?.addEventListener('change', () => applyUserFontSize(settingsListFontSize.value, true));
 settingsListFontSize?.addEventListener('input', () => applyUserFontSize(settingsListFontSize.value, true));
 settingsListFontDec?.addEventListener('click', () => { const n=clampFontSize(settingsListFontSize?.value)-1; applyUserFontSize(n,true); syncSettingsListFont(); });

@@ -1405,3 +1405,39 @@ html.tablet-ui.setting-dark-mode .article-title.read {
   color:#666c73 !important;
   font-weight:500 !important;
 }
+
+
+/* v0.1.232: settings always has a reachable return control on iPhone/iPad. */
+.display-settings-back{
+  position:fixed;
+  left:max(12px,env(safe-area-inset-left,0px));
+  top:max(12px,env(safe-area-inset-top,0px));
+  z-index:12010;
+  min-height:40px;
+  padding:7px 13px;
+  border:1px solid #c8cbd0;
+  border-radius:10px;
+  background:#f5f6f7;
+  color:#222;
+  font-weight:700;
+}
+html.setting-dark-mode .display-settings-back{
+  background:#2c2f34;
+  color:#f3f3f3;
+  border-color:#555b62;
+}
+.display-settings-head{
+  position:sticky;
+  top:-16px;
+  z-index:3;
+  padding-top:16px;
+  background:inherit;
+}
+html.tablet-ui .display-settings-panel{
+  overflow:auto;
+  -webkit-overflow-scrolling:touch;
+}
+html.tablet-ui .display-settings-card{
+  margin:56px auto 18px;
+  transform-origin:top center;
+}
