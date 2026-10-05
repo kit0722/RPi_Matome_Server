@@ -1384,3 +1384,24 @@ html.mobile-ui #newBadge {
   font-size:11px !important;
 }
 html.setting-hide-update #newBadge { display:none !important; }
+
+
+/* v0.1.228: iPad dark list keeps the selected row dark and uses softer title contrast. */
+html.tablet-ui.setting-dark-mode .item {
+  background:#15181b !important;
+  border-bottom-color:#30353b !important;
+}
+html.tablet-ui.setting-dark-mode .item:hover {
+  background:#191d21 !important;
+}
+html.tablet-ui.setting-dark-mode .item.selected {
+  background:#17191c !important;
+  outline:2px solid #34393f !important;
+}
+html.tablet-ui.setting-dark-mode .article-title {
+  color:#9298a0 !important;
+}
+html.tablet-ui.setting-dark-mode .article-title.read {
+  color:#666c73 !important;
+  font-weight:500 !important;
+}
