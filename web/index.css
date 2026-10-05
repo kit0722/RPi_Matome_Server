@@ -1386,7 +1386,7 @@ html.mobile-ui #newBadge {
 html.setting-hide-update #newBadge { display:none !important; }
 
 
-/* v0.1.228: iPad dark list keeps the selected row dark and uses softer title contrast. */
+/* v0.1.229: iPad dark keeps the selected row light, but title colors stay readable. */
 html.tablet-ui.setting-dark-mode .item {
   background:#15181b !important;
   border-bottom-color:#30353b !important;
@@ -1395,8 +1395,8 @@ html.tablet-ui.setting-dark-mode .item:hover {
   background:#191d21 !important;
 }
 html.tablet-ui.setting-dark-mode .item.selected {
-  background:#17191c !important;
-  outline:2px solid #34393f !important;
+  background:#f3f6fb !important;
+  outline:2px solid #d8e4ff !important;
 }
 html.tablet-ui.setting-dark-mode .article-title {
   color:#9298a0 !important;
