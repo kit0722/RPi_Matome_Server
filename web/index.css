@@ -1386,7 +1386,7 @@ html.mobile-ui #newBadge {
 html.setting-hide-update #newBadge { display:none !important; }
 
 
-/* v0.1.229: iPad dark keeps the selected row light, but title colors stay readable. */
+/* v0.1.230: iPad dark unread title is one step brighter; selected row stays light. */
 html.tablet-ui.setting-dark-mode .item {
   background:#15181b !important;
   border-bottom-color:#30353b !important;
@@ -1399,7 +1399,7 @@ html.tablet-ui.setting-dark-mode .item.selected {
   outline:2px solid #d8e4ff !important;
 }
 html.tablet-ui.setting-dark-mode .article-title {
-  color:#9298a0 !important;
+  color:#a8afb7 !important;
 }
 html.tablet-ui.setting-dark-mode .article-title.read {
   color:#666c73 !important;
