@@ -1998,6 +1998,7 @@ function applyFreshList(items) {
   rememberCurrentItems(allItems);
   saveListCache(allItems);
   saveSharedListCache(allItems);
+  void renewFrozenListLeases(allItems,true);
   pendingFreshItems = null;
   const displayedAt = rememberListDisplayTime(Date.now());
   hideNewBadge(displayedAt);
@@ -2022,6 +2023,7 @@ function applyPeerCommittedList(items, cutoff) {
   newestSnapshot=newestItemSnapshot(allItems);
   rememberCurrentItems(allItems);
   saveListCache(allItems);
+  void renewFrozenListLeases(allItems,true);
   pendingFreshItems=null;
   currentPage=oldPage;
   lastRenderKey='';
@@ -2147,6 +2149,34 @@ function prefetchMobileReadyArticles(items){
 }
 
 
+let frozenLeaseLastAt=0;
+let frozenLeasePending=null;
+async function renewFrozenListLeases(items=allItems, force=false){
+  if(WORKER_MODE)return null;
+  const now=Date.now();
+  if(!force && now-frozenLeaseLastAt<30000)return frozenLeasePending;
+  const urls=[...new Set((items||[]).map(x=>x?.link).filter(x=>/^https?:\/\//i.test(String(x||''))))].slice(0,500);
+  if(!urls.length)return null;
+  if(frozenLeasePending)return frozenLeasePending;
+  frozenLeaseLastAt=now;
+  frozenLeasePending=(async()=>{
+    try{
+      const r=await fetch('/api/ready-lease-batch',{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({urls}),cache:'no-store'
+      });
+      if(!r.ok)return null;
+      return await r.json();
+    }catch{return null;}
+    finally{frozenLeasePending=null;}
+  })();
+  return frozenLeasePending;
+}
+// Keep the exact list the user is reading protected even when it is older than
+// the rolling server list. This replaces the accidental "toggle read setting to recover" workaround.
+setInterval(()=>{if(!document.hidden)void renewFrozenListLeases(allItems,false);},5*60*1000);
+
+
 async function load(forceNetwork=false) {
   if (WORKER_MODE) return;
   const token=++loadToken;
@@ -2157,6 +2187,7 @@ async function load(forceNetwork=false) {
     const result=await fetchReadyList();
     if (token!==loadToken)return;
     allItems=result.items.slice(0,500);fillSourceFilter(allItems);
+    void renewFrozenListLeases(allItems,true);
     rememberServerBufferCutoff(result?.preparation?.new_buffer_cutoff);
     newestSnapshot=newestItemSnapshot(allItems);rememberCurrentItems(allItems);
     pendingFreshItems=null;
@@ -2659,6 +2690,7 @@ function restoreMobileReturnSnapshot() {
     pendingFreshItems = null;
     render(true);
     prefetchMobileReadyArticles(allItems);
+    void renewFrozenListLeases(allItems,true);
     statusEl.textContent = '';
     return true;
   } catch {
@@ -2684,6 +2716,7 @@ if (!WORKER_MODE) {
       pendingFreshItems = null;
       render(true);
       prefetchMobileReadyArticles(allItems);
+      void renewFrozenListLeases(allItems,true);
       showUpdateBadge(lastListDisplayTime() || cached.savedAt || 0);
       statusEl.textContent = '';
       scheduleNewCheck();
@@ -2714,6 +2747,7 @@ function syncOnDeviceResume(){
   if(now-lastDeviceResumeSyncAt<450)return;
   lastDeviceResumeSyncAt=now;
   refreshMobileReadHidingOnReturn();
+  void renewFrozenListLeases(allItems,false);
   void syncSharedReads({rerender:true});
   void checkForNewOnly(false,true);
 }

@@ -1854,13 +1854,33 @@ function normalize2chCopipeDisplay(root, pageUrl=''){
 }
 
 /* Viewing only attaches light interactions; extraction and media analysis are already finished. */
+async function fetchPreparedArticleWithRetry(api) {
+  let lastError=null;
+  for(let attempt=0;attempt<2;attempt++){
+    if(attempt){
+      try{await fetch('/api/ready-lease?url='+encodeURIComponent(requestedUrl),{cache:'no-store'});}catch{}
+      await new Promise(resolve=>setTimeout(resolve,120));
+    }
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),7000);
+    try{
+      // The article revision already makes the URL unique. Avoid force-cache here:
+      // a transient WebKit/cache stall must not strand the reader on "読み込み中".
+      const res=await fetch(api,{cache:'no-store',signal:controller.signal});
+      const data=await res.json().catch(()=>null);
+      if(res.ok && data?.article)return data;
+      lastError=new Error('ready article unavailable: '+res.status);
+    }catch(e){lastError=e;}
+    finally{clearTimeout(timer);}
+  }
+  throw lastError || new Error('この記事は準備中、または完成キャッシュの再構築中です。一覧を更新してください。');
+}
+
 async function loadPreparedArticle() {
   let data=consumePreparedPayload();
   if (!data?.article) {
     const api='/api/ready-article?url='+encodeURIComponent(requestedUrl)+(requestedRevision?'&rev='+encodeURIComponent(requestedRevision):'');
-    const res=await fetch(api,{cache:requestedRevision?'force-cache':'no-store'});
-    data=await res.json();
-    if (!res.ok || !data.article) throw new Error('この記事は準備中、または完成キャッシュの再構築中です。一覧を更新してください。');
+    data=await fetchPreparedArticleWithRetry(api);
   }
   const article=data.article;
   const mobileImageProfile=data.mobile_image || {enabled:false,max_width:720,quality:55};

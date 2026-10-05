@@ -1370,19 +1370,66 @@ class ReadyStore:
             return None
 
     def lease(self,url):
-        # Lease renewal is best-effort only.  Never let a busy preparation writer
-        # stall article display for up to the normal 15 s SQLite timeout.
+        # Lease renewal is best-effort only. Never shorten a longer list-session
+        # lease that may already protect this article.
         c=None
         try:
             c=sqlite3.connect(self.db, timeout=0.05)
             c.execute('PRAGMA synchronous=NORMAL')
-            result=c.execute("""UPDATE articles SET view_until=? WHERE url=?
+            now=time.time()
+            result=c.execute("""UPDATE articles SET view_until=MAX(view_until,?) WHERE url=?
               AND body_file IS NOT NULL AND ready_time IS NOT NULL
-              AND (state='ready' OR state IN ('retry','preparing') OR (state='retired' AND view_until>?))""", (time.time()+180,url,time.time()))
+              AND state IN ('ready','retry','preparing','retired')""", (now+600,url))
             c.commit()
             return result.rowcount>0
         except sqlite3.OperationalError:
             return False
+        finally:
+            if c is not None:c.close()
+
+    def lease_many(self, urls, seconds=12*3600):
+        """Protect the exact frozen list a viewer is reading through.
+
+        Mobile intentionally restores the same list after returning from an article.
+        Without this lease, that frozen list can outlive the server's rolling latest
+        window and point at bodies already garbage-collected.
+        """
+        clean=[];seen=set()
+        for raw in urls or []:
+            url=str(raw or '').strip()
+            if not url.startswith(('http://','https://')) or url in seen:
+                continue
+            seen.add(url);clean.append(url)
+            if len(clean)>=500:break
+        if not clean:return {'requested':0,'protected':0}
+        now=time.time();lease_until=now+max(1800,min(24*3600,int(seconds or 12*3600)))
+        protected=0
+        c=None
+        try:
+            c=sqlite3.connect(self.db, timeout=0.25)
+            c.row_factory=sqlite3.Row
+            c.execute('PRAGMA synchronous=NORMAL')
+            c.execute('BEGIN IMMEDIATE')
+            for off in range(0,len(clean),300):
+                chunk=clean[off:off+300]
+                marks=','.join('?' for _ in chunk)
+                rows=c.execute(f"""SELECT url FROM articles
+                  WHERE url IN ({marks}) AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND state IN ('ready','retry','preparing','retired')""",chunk).fetchall()
+                valid=[r['url'] for r in rows]
+                if not valid:continue
+                valid_marks=','.join('?' for _ in valid)
+                c.execute(f"""UPDATE articles SET view_until=MAX(view_until,?)
+                  WHERE url IN ({valid_marks})""",[lease_until,*valid])
+                protected+=len(valid)
+            c.commit()
+            return {'requested':len(clean),'protected':protected,'lease_until':lease_until}
+        except sqlite3.OperationalError:
+            try:
+                if c is not None:c.rollback()
+            except Exception:
+                pass
+            return {'requested':len(clean),'protected':0,'busy':True}
         finally:
             if c is not None:c.close()
 
