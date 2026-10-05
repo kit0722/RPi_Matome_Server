@@ -4,7 +4,7 @@ const NEW_SOKU = "https://new-soku.net/new.php";
 const HUB_2CH = "https://2chub.sekaiwatch.jp/";
 const MATOMEANT = "https://matomeant.com/";
 const OWATA = "https://owata-net.com/";
-const MAX_ITEMS = 1500;
+const MAX_ITEMS = 3800;
 const DISPLAY_ITEMS = 100;
 const FETCH_TIMEOUT_MS = 3200;
 const FEED_CONCURRENCY = 4;
@@ -1980,10 +1980,11 @@ function showNewBadge(count=0) {
   newBadge.hidden = false;
   newBadge.dataset.mode = "new";
   newBadge.classList.remove("update-state");
-  newBadge.textContent = count > 0 ? `新着あり ${count}件` : "新着あり";
-  newBadge.title = "新着記事を表示";
+  const maxed = Number(count) >= 300;
+  newBadge.textContent = maxed ? "新着MAX 300件" : (count > 0 ? `新着あり ${count}件` : "新着あり");
+  newBadge.title = maxed ? "新着300件。待機記事は裏で保持しています" : "新着記事を表示";
   window.__matomeForceHeaderBadge?.();
-  newBadge.style.setProperty("background", "#e53935", "important");
+  newBadge.style.setProperty("background", maxed ? "#ef6c00" : "#e53935", "important");
   newBadge.style.setProperty("color", "#fff", "important");
   newBadge.style.setProperty("-webkit-text-fill-color", "#fff", "important");
 }
@@ -2054,7 +2055,7 @@ async function checkForNewOnly(applyIfFound=false, syncPeerState=false) {
     // v0.1.209: the red badge must use the server-side new-item buffer,
     // not a second browser-side diff calculation. The latter could count all
     // 500 current rows as new after a cache/version transition.
-    const count = Math.min(500, Math.max(0, Number(fresh?.preparation?.new_buffer || 0)));
+    const count = Math.min(300, Math.max(0, Number(fresh?.preparation?.new_buffer || 0)));
     pendingFreshItems = Array.isArray(fresh.items) ? fresh.items : null;
     if (count > 0) {
       if (applyIfFound) applyFreshList(fresh.items);
@@ -2099,7 +2100,7 @@ async function fetchReadyList() {
   const n=result.items.filter(x=>x.ready).length;
   const legacy=result.items.length-n;
   const completedBodyCount=Math.min(500, Number(prep.active_ready||n||0));
-  const newBufferCount=Math.min(500, Number(prep.new_buffer||0));
+  const newBufferCount=Math.min(300, Number(prep.new_buffer||0));
   updatedEl.textContent=`完成 ${completedBodyCount}件 ／ 新着 ${newBufferCount}件${legacy?`＋過去キャッシュ ${legacy}件`:""} ／ 初期準備 ${prep.initial_ready||0}/${prep.initial_total||500}件`;
   if (prep.worker?.state==='error') updatedEl.textContent+=' ／ 準備処理停止: '+prep.worker.error;
   else if (prep.worker?.heartbeat && Date.now()-prep.worker.heartbeat>360000) updatedEl.textContent+=' ／ 準備処理の応答を確認してください';
@@ -2272,6 +2273,7 @@ const settingsShowSiteCounts = document.getElementById('settingsShowSiteCounts')
 const settingsShowStatus = document.getElementById('settingsShowStatus');
 const settingsShowIkioi = document.getElementById('settingsShowIkioi');
 const settingsShowUpdate = document.getElementById('settingsShowUpdate');
+const settingsStandbyArticles = document.getElementById('settingsStandbyArticles');
 const settingsResetDisplay = document.getElementById('settingsResetDisplay');
 const READER_FONT_PC_KEY = 'matome_reader_font_size_pc_v1';
 const READER_FONT_MOBILE_KEY = 'matome_reader_font_size_mobile_v1';
@@ -2395,12 +2397,38 @@ function loadExtraDisplaySettings(){
   applyReaderSettingFont(rf,false); applyReaderLineHeight(rl,false); applyReaderMetaFont(rm,false);
   for(const [input,key,cls] of [[settingsShowSiteCounts,SHOW_SITE_COUNTS_KEY,'setting-hide-site-counts'],[settingsShowStatus,SHOW_STATUS_KEY,'setting-hide-status'],[settingsShowIkioi,SHOW_IKIOI_KEY,'setting-hide-ikioi'],[settingsShowUpdate,SHOW_UPDATE_KEY,'setting-hide-update']]){ if(!input)continue; input.checked=readBoolSetting(key,true); applyBoolSetting(input,key,cls,false); }
 }
+async function loadStandbySetting(){
+  if(!settingsStandbyArticles)return;
+  try{
+    const r=await fetch('/api/standby-settings',{cache:'no-store'});
+    if(!r.ok)return;
+    const d=await r.json();
+    settingsStandbyArticles.value=String(Number(d?.standby_articles||1000));
+  }catch{}
+}
+async function saveStandbySetting(value){
+  if(!settingsStandbyArticles)return;
+  const n=Number(value||1000);
+  try{
+    const r=await fetch('/api/standby-settings',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({standby_articles:n}),cache:'no-store'
+    });
+    if(!r.ok)throw new Error('待機記事設定を保存できません');
+    const d=await r.json();
+    settingsStandbyArticles.value=String(Number(d?.standby_articles||n));
+  }catch{
+    await loadStandbySetting();
+  }
+}
+
 function openDisplaySettings() {
   syncSettingsListFont();
   loadUiFontSize();
   loadExtraDisplaySettings();
   loadSettingsPanelScale();
   loadDarkMode();
+  void loadStandbySetting();
   if (displaySettingsPanel) displaySettingsPanel.hidden = false;
 }
 function closeDisplaySettings() {
@@ -2433,6 +2461,7 @@ settingsPanelScale?.addEventListener('input',()=>applySettingsPanelScale(setting
 settingsPanelScale?.addEventListener('change',()=>applySettingsPanelScale(settingsPanelScale.value,true));
 settingsPanelScaleDec?.addEventListener('click',()=>applySettingsPanelScale(clampSettingsScale(settingsPanelScale?.value)-5,true));
 settingsPanelScaleInc?.addEventListener('click',()=>applySettingsPanelScale(clampSettingsScale(settingsPanelScale?.value)+5,true));
+settingsStandbyArticles?.addEventListener('change',()=>void saveStandbySetting(settingsStandbyArticles.value));
 
 settingsResetDisplay?.addEventListener('click',()=>{
   applyUiFontSize(isMobileLayout()?19:16,true);
@@ -2510,6 +2539,31 @@ sitePickerClose?.addEventListener('click', () => {
     setMobileNavActive('home');
   }
 });
+
+let standbyReleaseTimer=null;
+async function releaseStandbyTick(){
+  standbyReleaseTimer=null;
+  if(WORKER_MODE)return;
+  if(document.hidden){
+    standbyReleaseTimer=setTimeout(releaseStandbyTick,30000);
+    return;
+  }
+  let delay=30000;
+  try{
+    const r=await fetch('/api/release-standby',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
+    if(r.ok){
+      const d=await r.json();
+      delay=Math.max(10000,Math.min(30000,Number(d?.next_interval_seconds||30)*1000));
+      if(d?.released)void checkForNewOnly(false,true);
+    }
+  }catch{}
+  standbyReleaseTimer=setTimeout(releaseStandbyTick,delay);
+}
+function startStandbyReleaseLoop(immediate=false){
+  if(WORKER_MODE)return;
+  if(standbyReleaseTimer)clearTimeout(standbyReleaseTimer);
+  standbyReleaseTimer=setTimeout(releaseStandbyTick,immediate?250:10000);
+}
 
 async function consumeServerNewBuffer() {
   try {
@@ -2642,8 +2696,11 @@ function syncOnDeviceResume(){
   void syncSharedReads({rerender:true});
   void checkForNewOnly(false,true);
 }
-document.addEventListener("visibilitychange", () => { if (!document.hidden) syncOnDeviceResume(); });
-window.addEventListener('focus', syncOnDeviceResume);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) { syncOnDeviceResume(); startStandbyReleaseLoop(true); }
+});
+window.addEventListener('focus', () => { syncOnDeviceResume(); startStandbyReleaseLoop(true); });
+startStandbyReleaseLoop(true);
 
 
 

@@ -46,6 +46,7 @@ for k,v in {
     'mobile_image_enabled':True,'mobile_image_max_width':720,'mobile_image_quality':55,
     'mobile_image_workers':1,'upstream_workers':2,'upstream_text_max_mb':32,
     'turnover_reserve_mb':768,
+    'standby_articles':1000,
     'instagram_prefetch_enabled':True,
     'selenium_max_active':1,'selenium_lock_wait_seconds':30,'selenium_load_wait_seconds':45,
     'selenium_start_timeout_seconds':25,'selenium_page_load_timeout_seconds':35,

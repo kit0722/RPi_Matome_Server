@@ -14,11 +14,14 @@ from pathlib import Path
 
 SCHEMA = 33
 VIEW_SCHEMA_MIN = 33
-# v0.1.214: 500 committed articles + up to 500 unconsumed new articles.
+# v0.1.231: 500 committed + 300 visible new + configurable hidden standby.
 MAX_BODY_CACHE = 500
-MAX_NEW_BUFFER = 500
-MAX_PUBLISHED = MAX_BODY_CACHE + MAX_NEW_BUFFER
-MAX_DISCOVERY = MAX_BODY_CACHE
+MAX_NEW_BUFFER = 300
+STANDBY_CHOICES = (500, 1000, 1500, 2000, 2500, 3000)
+DEFAULT_STANDBY = 1000
+MAX_STANDBY = max(STANDBY_CHOICES)
+MAX_PUBLISHED = MAX_BODY_CACHE + MAX_NEW_BUFFER + MAX_STANDBY
+MAX_DISCOVERY = MAX_PUBLISHED
 
 # v0.1.215 topic de-duplication policy.  The enforcement window stays at the
 # existing 48 hours; a wider 7-day observation window is kept only to measure
@@ -149,7 +152,7 @@ class ReadyStore:
                   attempts INTEGER NOT NULL DEFAULT 0, retry_at REAL NOT NULL DEFAULT 0,
                   body_file TEXT, assets TEXT, title TEXT, thumb TEXT, error TEXT, view_until REAL NOT NULL DEFAULT 0,
                   schema_version INTEGER NOT NULL DEFAULT 33, legacy_public_time REAL NOT NULL DEFAULT 0,
-                  revision TEXT NOT NULL DEFAULT '');
+                  revision TEXT NOT NULL DEFAULT '', release_time REAL NOT NULL DEFAULT 0);
                 CREATE INDEX IF NOT EXISTS ready_order ON articles(state,ready_time DESC);
                 CREATE INDEX IF NOT EXISTS queue_due ON articles(state,retry_at,attempts,source_time DESC);
                 CREATE TABLE IF NOT EXISTS status (key TEXT PRIMARY KEY,value TEXT);
@@ -184,13 +187,36 @@ class ReadyStore:
                 c.execute('ALTER TABLE articles ADD COLUMN legacy_public_time REAL NOT NULL DEFAULT 0')
             if 'revision' not in cols:
                 c.execute("ALTER TABLE articles ADD COLUMN revision TEXT NOT NULL DEFAULT ''")
+            release_added = False
+            if 'release_time' not in cols:
+                c.execute("ALTER TABLE articles ADD COLUMN release_time REAL NOT NULL DEFAULT 0")
+                c.execute("""UPDATE articles SET release_time=COALESCE(ready_time,0)
+                             WHERE body_file IS NOT NULL AND ready_time IS NOT NULL""")
+                release_added = True
             # Existing installations already have their committed 500-item cache.
             # Freeze its newest completion time as the buffer boundary on first v0.1.209 start.
             marker=c.execute("SELECT value FROM status WHERE key='new_buffer_cutoff'").fetchone()
             if marker is None:
-                row=c.execute("SELECT MAX(ready_time) t FROM articles WHERE body_file IS NOT NULL AND ready_time IS NOT NULL AND state IN ('ready','retry','preparing')").fetchone()
+                row=c.execute("SELECT MAX(release_time) t FROM articles WHERE body_file IS NOT NULL AND ready_time IS NOT NULL AND release_time>0 AND state IN ('ready','retry','preparing')").fetchone()
                 if row and row['t']:
                     c.execute('INSERT INTO status(key,value) VALUES (?,?)',('new_buffer_cutoff',json.dumps(float(row['t']))))
+                    marker=c.execute("SELECT value FROM status WHERE key='new_buffer_cutoff'").fetchone()
+            # One-time migration: preserve at most 300 currently-visible new rows.
+            # Older excess rows become hidden standby, never deleted.
+            if release_added and marker is not None:
+                try:
+                    cutoff=float(json.loads(marker['value']))
+                except Exception:
+                    cutoff=0
+                if cutoff>0:
+                    excess=c.execute("""SELECT url FROM articles
+                      WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                        AND release_time>? AND state IN ('ready','retry','preparing')
+                      ORDER BY release_time DESC,url LIMIT -1 OFFSET ?""",
+                      (VIEW_SCHEMA_MIN,cutoff,MAX_NEW_BUFFER)).fetchall()
+                    if excess:
+                        c.executemany("UPDATE articles SET release_time=0 WHERE url=?",[(r['url'],) for r in excess])
+            c.execute('INSERT OR IGNORE INTO status(key,value) VALUES (?,?)',('standby_target',json.dumps(DEFAULT_STANDBY)))
             self._topic_seed_history(c)
             c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',('topic_dedupe_policy_version',json.dumps(215)))
 
@@ -397,6 +423,34 @@ class ReadyStore:
                        source=excluded.source,source_time=excluded.source_time,last_seen=excluded.last_seen""",
                   (url, title, norm, norm[:2], str(item.get('source') or ''), float(ts), now_ms, now_ms))
 
+    @staticmethod
+    def _clamp_standby_target(value):
+        try:
+            n=int(value)
+        except Exception:
+            n=DEFAULT_STANDBY
+        return min(STANDBY_CHOICES,key=lambda x:abs(x-n))
+
+    def standby_target(self):
+        with self.connect() as c:
+            row=c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
+            try:return self._clamp_standby_target(json.loads(row['value'])) if row else DEFAULT_STANDBY
+            except Exception:return DEFAULT_STANDBY
+
+    def set_standby_target(self, value):
+        n=self._clamp_standby_target(value)
+        with self.connect() as c:
+            c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',('standby_target',json.dumps(n)))
+        self.maintain()
+        return n
+
+    def standby_count(self):
+        with self.connect() as c:
+            return int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time<=0 AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
+
     def discover(self, items, authoritative=True):
         clean = {}
         for item in items:
@@ -408,7 +462,8 @@ class ReadyStore:
             if source_time != source_time or source_time < 0:
                 source_time = 0
             clean[url] = (dict(item, source_time=source_time), source_time)
-        latest = sorted(clean.items(), key=lambda x: x[1][1], reverse=True)[:MAX_DISCOVERY]
+        discovery_limit=min(MAX_DISCOVERY,MAX_BODY_CACHE+MAX_NEW_BUFFER+self.standby_target())
+        latest = sorted(clean.items(), key=lambda x: x[1][1], reverse=True)[:discovery_limit]
         with self.connect() as c:
             initial = c.execute("SELECT value FROM status WHERE key='initial_urls'").fetchone()
             initial_urls = []
@@ -457,9 +512,9 @@ class ReadyStore:
                 c.execute('''INSERT INTO articles(url,item,source_time) VALUES (?,?,?)
                   ON CONFLICT(url) DO UPDATE SET
                     item=excluded.item,source_time=excluded.source_time,
-                    state=CASE WHEN articles.state='evicted' AND articles.error IN ('最新300件の対象外','最新500件の対象外') THEN 'pending' ELSE articles.state END,
-                    retry_at=CASE WHEN articles.state='evicted' AND articles.error IN ('最新300件の対象外','最新500件の対象外') THEN 0 ELSE articles.retry_at END,
-                    error=CASE WHEN articles.state='evicted' AND articles.error IN ('最新300件の対象外','最新500件の対象外') THEN NULL ELSE articles.error END
+                    state=CASE WHEN articles.state='evicted' AND articles.error IN ('最新300件の対象外','最新500件の対象外','最新待機枠の対象外') THEN 'pending' ELSE articles.state END,
+                    retry_at=CASE WHEN articles.state='evicted' AND articles.error IN ('最新300件の対象外','最新500件の対象外','最新待機枠の対象外') THEN 0 ELSE articles.retry_at END,
+                    error=CASE WHEN articles.state='evicted' AND articles.error IN ('最新300件の対象外','最新500件の対象外','最新待機枠の対象外') THEN NULL ELSE articles.error END
                 ''', (url, json.dumps(item, ensure_ascii=False), ts))
             now_ms=time.time()*1000.0
             c.execute('DELETE FROM topic_history WHERE source_time<?',(now_ms-TOPIC_OBSERVE_WINDOW_MS,))
@@ -472,7 +527,7 @@ class ReadyStore:
             # completed.  A partial antenna/RSS outage must not permanently discard candidates.
             if authoritative and active_urls:
                 placeholders=','.join('?' for _ in active_urls)
-                c.execute(f"UPDATE articles SET state='evicted',error='最新500件の対象外' "
+                c.execute(f"UPDATE articles SET state='evicted',error='最新待機枠の対象外' "
                           f"WHERE state IN ('pending','retry','failed') AND url NOT IN ({placeholders})", active_urls)
                 c.execute("DELETE FROM asset_claims WHERE article IN (SELECT url FROM articles WHERE state='evicted')")
         self.set_status('last_discovery', int(time.time()*1000))
@@ -503,17 +558,36 @@ class ReadyStore:
     def next_job(self):
         with self.connect() as c:
             c.execute('BEGIN IMMEDIATE')
-            row = c.execute("""SELECT * FROM articles
-              WHERE state IN ('pending','retry') AND retry_at<=?
-              ORDER BY CASE
-                WHEN state='retry' AND error='表示品質チェックによる優先再抽出' THEN 0
-                WHEN state='retry' AND error LIKE '優先再抽出:%' THEN 1
-                WHEN state='pending' THEN 2
-                ELSE 3 END,
-                attempts ASC, source_time DESC LIMIT 1""", (time.time(),)).fetchone()
-            if not row:
-                return None
-            c.execute("UPDATE articles SET state='preparing',attempts=attempts+1 WHERE url=?", (row['url'],))
+            while True:
+                row = c.execute("""SELECT * FROM articles
+                  WHERE state IN ('pending','retry') AND retry_at<=?
+                  ORDER BY CASE
+                    WHEN state='retry' AND error='表示品質チェックによる優先再抽出' THEN 0
+                    WHEN state='retry' AND error LIKE '優先再抽出:%' THEN 1
+                    WHEN state='pending' THEN 2
+                    ELSE 3 END,
+                    attempts ASC, source_time DESC LIMIT 1""", (time.time(),)).fetchone()
+                if not row:
+                    return None
+                # Recheck duplicate topics immediately before expensive preparation.
+                # This catches two similar URLs discovered in the same batch: once the first
+                # completes and enters topic_history, the second is evicted before rendering.
+                if row['state']=='pending' and not row['body_file']:
+                    try:
+                        candidate=json.loads(row['item'])
+                        decision=self._topic_existing_match(c,candidate,float(row['source_time'] or 0))
+                    except Exception:
+                        decision=None
+                    if decision and decision.get('action')=='skip':
+                        age_hours=float(decision['age_ms'])/(60*60*1000.0)
+                        self._topic_log(c,'skip',dict(candidate,link=row['url']),float(row['source_time'] or 0),
+                                        decision['match'],decision['reason'],decision['score'],age_hours,decision.get('details'))
+                        c.execute("UPDATE articles SET state='evicted',error=? WHERE url=?",
+                                  ('類似タイトル重複(48h): '+str(decision['match']['url']),row['url']))
+                        c.execute('DELETE FROM asset_claims WHERE article=?',(row['url'],))
+                        continue
+                c.execute("UPDATE articles SET state='preparing',attempts=attempts+1 WHERE url=?", (row['url'],))
+                break
         item=json.loads(row['item'])
         # v0.1.102: Preserve queue provenance for structured retry/success logging.
         # These private keys are ignored by the article extractor.
@@ -992,6 +1066,8 @@ class ReadyStore:
             #   jump back to the top.
             was_completed = bool(previous['body_file'] and previous['ready_time'])
             publish_time = previous['ready_time'] if was_completed else now
+            marker=self._buffer_cutoff(c)
+            release_time=float(previous['release_time'] or previous['ready_time'] or 0) if was_completed else (publish_time if marker is None else 0)
             revision_seed = json.dumps({
                 'title': snapshot.get('title') or '',
                 'html': snapshot.get('html') or '',
@@ -1004,8 +1080,8 @@ class ReadyStore:
             name = hashlib.sha256(url.encode()).hexdigest()+'.json'
             self.atomic(self.bodies / name, json.dumps(snapshot, ensure_ascii=False, separators=(',',':')).encode())
             # The DB transaction is the only publication point, AFTER files are durable.
-            c.execute("UPDATE articles SET state='ready',ready_time=?,body_file=?,assets=?,title=?,thumb=?,error=NULL,attempts=0,retry_at=0,schema_version=?,revision=? WHERE url=?",
-                      (publish_time, name, json.dumps(sorted(assets)),snapshot['title'],snapshot['thumb'],SCHEMA,revision,url))
+            c.execute("UPDATE articles SET state='ready',ready_time=?,release_time=?,body_file=?,assets=?,title=?,thumb=?,error=NULL,attempts=0,retry_at=0,schema_version=?,revision=? WHERE url=?",
+                      (publish_time, release_time, name, json.dumps(sorted(assets)),snapshot['title'],snapshot['thumb'],SCHEMA,revision,url))
             try:
                 self._topic_upsert_history(c,url,json.loads(previous['item']),float(previous['source_time'] or 0))
             except Exception:
@@ -1020,7 +1096,7 @@ class ReadyStore:
             if marker is None:
                 ready_n=int(c.execute("SELECT COUNT(*) FROM articles WHERE body_file IS NOT NULL AND ready_time IS NOT NULL AND state IN ('ready','retry','preparing')").fetchone()[0] or 0)
                 if ready_n>=MAX_BODY_CACHE:
-                    newest=c.execute("SELECT MAX(ready_time) t FROM articles WHERE body_file IS NOT NULL AND ready_time IS NOT NULL AND state IN ('ready','retry','preparing')").fetchone()['t']
+                    newest=c.execute("SELECT MAX(release_time) t FROM articles WHERE body_file IS NOT NULL AND ready_time IS NOT NULL AND release_time>0 AND state IN ('ready','retry','preparing')").fetchone()['t']
                     if newest:c.execute('INSERT OR REPLACE INTO status VALUES (?,?)',('new_buffer_cutoff',json.dumps(float(newest))))
         return publish_time
 
@@ -1052,15 +1128,55 @@ class ReadyStore:
             cutoff=self._buffer_cutoff(c)
             if cutoff is None:return 0
             return int(c.execute("""SELECT COUNT(*) FROM articles
-              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time>?
-                AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time>? AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+
+    def release_waiting(self):
+        """Release at most one fully-prepared standby article while a viewer is active."""
+        now_ms=time.time()*1000.0
+        with self.connect() as c:
+            c.execute('BEGIN IMMEDIATE')
+            cutoff=self._buffer_cutoff(c)
+            if cutoff is None:
+                return {'released':False,'new_buffer':0,'standby':0,'next_interval_seconds':30}
+            target_row=c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
+            try:target=self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
+            except Exception:target=DEFAULT_STANDBY
+            visible=int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time>? AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+            standby=int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time<=0 AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
+            interval=10 if standby>=max(250,target//2) else 15 if standby>=max(75,target//5) else 30
+            last_row=c.execute("SELECT value FROM status WHERE key='standby_last_release_ms'").fetchone()
+            try:last=float(json.loads(last_row['value'])) if last_row else 0
+            except Exception:last=0
+            if visible>=MAX_NEW_BUFFER or standby<=0 or (last and now_ms-last<interval*1000):
+                return {'released':False,'new_buffer':visible,'standby':standby,'standby_target':target,
+                        'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
+            row=c.execute("""SELECT url FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time<=0 AND state='ready'
+              ORDER BY source_time ASC,ready_time ASC,url LIMIT 1""",(VIEW_SCHEMA_MIN,)).fetchone()
+            if not row:
+                return {'released':False,'new_buffer':visible,'standby':standby,'standby_target':target,
+                        'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
+            c.execute("UPDATE articles SET release_time=? WHERE url=?",(now_ms,row['url']))
+            c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',('standby_last_release_ms',json.dumps(now_ms)))
+            visible+=1;standby=max(0,standby-1)
+            return {'released':True,'new_buffer':visible,'standby':standby,'standby_target':target,
+                    'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
 
     def consume_new_buffer(self):
         """Merge all currently completed new-buffer articles into the committed 500-item cache."""
         with self.connect() as c:
-            row=c.execute("""SELECT MAX(ready_time) t FROM articles
+            row=c.execute("""SELECT MAX(release_time) t FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,)).fetchone()
+                AND release_time>0 AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,)).fetchone()
             newest=float(row['t'] or 0)
             if newest:
                 c.execute('INSERT OR REPLACE INTO status VALUES (?,?)',('new_buffer_cutoff',json.dumps(newest)))
@@ -1079,19 +1195,19 @@ class ReadyStore:
             if cutoff is None:
                 rows=c.execute("""SELECT * FROM articles
                   WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                    AND state IN ('ready','retry','preparing')
-                  ORDER BY ready_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,MAX_BODY_CACHE)).fetchall()
+                    AND release_time>0 AND state IN ('ready','retry','preparing')
+                  ORDER BY release_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,MAX_BODY_CACHE)).fetchall()
             else:
                 fresh=c.execute("""SELECT * FROM articles
-                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time>?
-                    AND state IN ('ready','retry','preparing')
-                  ORDER BY ready_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,cutoff,MAX_NEW_BUFFER)).fetchall()
+                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND release_time>? AND state IN ('ready','retry','preparing')
+                  ORDER BY release_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,cutoff,MAX_NEW_BUFFER)).fetchall()
                 base=c.execute("""SELECT * FROM articles
-                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time<=?
-                    AND state IN ('ready','retry','preparing')
-                  ORDER BY ready_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,cutoff,MAX_BODY_CACHE)).fetchall()
+                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND release_time>0 AND release_time<=? AND state IN ('ready','retry','preparing')
+                  ORDER BY release_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,cutoff,MAX_BODY_CACHE)).fetchall()
                 rows=list(fresh)+list(base)
-                rows.sort(key=lambda r:(float(r['ready_time'] or 0),str(r['url'])),reverse=True)
+                rows.sort(key=lambda r:(float(r['release_time'] or 0),str(r['url'])),reverse=True)
             # v0.1.209: any article handed to the visible list gets a short lease.
             # This closes the race where maintain() could retire/remove a body after
             # /api/ready-list returned it but before the user clicked it.
@@ -1117,7 +1233,8 @@ class ReadyStore:
                 self.fail(row['url'],'完成一覧メタデータの破損を検出・再準備中')
                 continue
             revision=(row['revision'] or str(int(float(row['ready_time'] or 0))))
-            item.update(source_time=row['source_time'],ready_time=row['ready_time'],timestamp=row['ready_time'],
+            public_time=float(row['release_time'] or row['ready_time'] or 0)
+            item.update(source_time=row['source_time'],ready_time=public_time,timestamp=public_time,
                         thumb=row['thumb'],ready=True,title=row['title'],revision=revision)
             items.append(item)
         return items
@@ -1130,11 +1247,11 @@ class ReadyStore:
         current 500-item publication window.
         """
         with self.connect() as c:
-            rows=c.execute("""SELECT url,item,source_time,ready_time,body_file,assets,title,thumb,revision
+            rows=c.execute("""SELECT url,item,source_time,ready_time,release_time,body_file,assets,title,thumb,revision
               FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND (state='ready' OR state IN ('retry','preparing'))
-              ORDER BY ready_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,MAX_BODY_CACHE)).fetchall()
+                AND release_time>0 AND (state='ready' OR state IN ('retry','preparing'))
+              ORDER BY release_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,MAX_BODY_CACHE)).fetchall()
             asset_sizes={r['path']:int(r['size'] or 0) for r in c.execute('SELECT path,size FROM asset_files')}
         out=[]
         for row in rows:
@@ -1160,7 +1277,7 @@ class ReadyStore:
                 'title':str(row['title'] or item.get('title') or ''),
                 'source':str(item.get('source') or ''),
                 'source_time':float(row['source_time'] or 0),
-                'ready_time':float(row['ready_time'] or 0),
+                'ready_time':float(row['release_time'] or row['ready_time'] or 0),
                 'thumb':str(row['thumb'] or ''),
                 'revision':str(row['revision'] or str(int(float(row['ready_time'] or 0)))),
                 'body_bytes':body_bytes,
@@ -1657,6 +1774,9 @@ class ReadyStore:
             ready_count=int(c.execute("""SELECT COUNT(*) FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
+            standby_count=int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time<=0 AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
             state_counts={r['state']:int(r['n'] or 0) for r in c.execute('SELECT state,COUNT(*) n FROM articles GROUP BY state')}
             qrow=c.execute("""SELECT
               SUM(CASE WHEN state='pending' THEN 1 ELSE 0 END) pending,
@@ -1672,8 +1792,8 @@ class ReadyStore:
                 buffer_count=0
             else:
                 buffer_count=int(c.execute("""SELECT COUNT(*) FROM articles
-                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time>?
-                    AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND release_time>? AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
         normal = ready_count >= MAX_BODY_CACHE or (urls and completed==len(urls))
         counts=dict(state_counts)
         counts['retry_total']=q['retry_total']
@@ -1684,11 +1804,13 @@ class ReadyStore:
         counts['preparing']=q['preparing']
         counts['failed']=q['failed']
         status['counts']=counts
-        committed_count=max(0,min(MAX_BODY_CACHE,ready_count-buffer_count))
+        released_count=max(0,ready_count-standby_count)
+        committed_count=max(0,min(MAX_BODY_CACHE,released_count-buffer_count))
         return dict(status, initial_total=min(MAX_BODY_CACHE,len(urls)),
                     initial_ready=min(MAX_BODY_CACHE,max(completed,committed_count)),
-                    active_ready=committed_count, new_buffer=buffer_count,
-                    retained_total=committed_count+buffer_count, phase='normal' if normal else 'building')
+                    active_ready=committed_count, new_buffer=min(MAX_NEW_BUFFER,buffer_count),
+                    retained_total=committed_count+min(MAX_NEW_BUFFER,buffer_count)+standby_count,
+                    phase='normal' if normal else 'building')
 
     def asset_bytes(self):
         with self.connect() as c:
@@ -1720,11 +1842,21 @@ class ReadyStore:
             c.execute('BEGIN IMMEDIATE')
             c.execute('DELETE FROM asset_claims WHERE touched<?',(now-claim_ttl,))
             cutoff=self._buffer_cutoff(c)
+            target_row=c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
+            try:standby_target=self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
+            except Exception:standby_target=DEFAULT_STANDBY
             if cutoff is None:
-                keep_urls={r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' ORDER BY ready_time DESC LIMIT ?",(MAX_BODY_CACHE,))}
+                keep_urls={r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' AND release_time>0 ORDER BY release_time DESC LIMIT ?",(MAX_BODY_CACHE,))}
             else:
-                keep_urls={r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' AND ready_time<=? ORDER BY ready_time DESC LIMIT ?",(cutoff,MAX_BODY_CACHE))}
-                keep_urls.update(r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' AND ready_time>? ORDER BY ready_time DESC LIMIT ?",(cutoff,MAX_NEW_BUFFER)))
+                # Never allow more than 300 released-but-unconsumed rows. Migration/races
+                # demote older excess rows back into hidden standby instead of deleting them.
+                excess=c.execute("""SELECT url FROM articles WHERE state='ready' AND release_time>?
+                                    ORDER BY release_time DESC,url LIMIT -1 OFFSET ?""",(cutoff,MAX_NEW_BUFFER)).fetchall()
+                if excess:
+                    c.executemany("UPDATE articles SET release_time=0 WHERE url=?",[(r['url'],) for r in excess])
+                keep_urls={r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' AND release_time>0 AND release_time<=? ORDER BY release_time DESC LIMIT ?",(cutoff,MAX_BODY_CACHE))}
+                keep_urls.update(r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' AND release_time>? ORDER BY release_time DESC LIMIT ?",(cutoff,MAX_NEW_BUFFER)))
+                keep_urls.update(r['url'] for r in c.execute("SELECT url FROM articles WHERE state='ready' AND release_time<=0 ORDER BY source_time DESC,ready_time DESC LIMIT ?",(standby_target,)))
             rows=c.execute("SELECT url,body_file FROM articles WHERE state='ready'").fetchall()
             retired=[r for r in rows if r['url'] not in keep_urls]
             for row in retired:

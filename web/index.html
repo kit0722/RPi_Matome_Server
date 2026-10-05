@@ -167,6 +167,20 @@
           <button id="settingsPanelScaleInc" type="button" aria-label="設定画面を大きく">＋</button>
         </div>
       </div>
+      <div class="display-settings-row">
+        <div>
+          <strong>待機記事</strong>
+          <small>完成済みで表には出さない予備記事</small>
+        </div>
+        <select id="settingsStandbyArticles" aria-label="待機記事数">
+          <option value="500">500件</option>
+          <option value="1000">1000件</option>
+          <option value="1500">1500件</option>
+          <option value="2000">2000件</option>
+          <option value="2500">2500件</option>
+          <option value="3000">3000件</option>
+        </select>
+      </div>
       <div class="display-settings-row display-settings-toggle-row">
         <div><strong>既読を非表示</strong><small>読んだ記事を一覧から隠す</small></div>
         <label class="settings-switch"><input id="hideReadArticles" type="checkbox"><span></span></label>
@@ -255,6 +269,6 @@
     })();
   </script>
   <script src="web_shim.js?v=0264"></script>
-  <script src="index.js?v=0304"></script>
+  <script src="index.js?v=0305"></script>
 </body>
 </html>

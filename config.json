@@ -36,9 +36,10 @@
   "selenium_min_available_mb": 1200,
   "selenium_max_load_per_cpu": 1.35,
   "selenium_max_mem_psi": 1.5,
-  "selenium_max_io_psi": 5.0,
-  "selenium_max_io_full_psi": 2.0,
+  "selenium_max_io_psi": 5,
+  "selenium_max_io_full_psi": 2,
   "selenium_max_swapout_pages_s": 64,
   "selenium_swap_used_hard_pct": 70,
-  "selenium_safety_profile_version": 153
+  "selenium_safety_profile_version": 153,
+  "standby_articles": 1000
 }

@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from ready_store import ReadyStore, MAX_PUBLISHED
+from ready_store import ReadyStore, MAX_PUBLISHED, MAX_NEW_BUFFER, STANDBY_CHOICES, DEFAULT_STANDBY
 from video_stream import relay as relay_video, warm as warm_video
 
 ROOT = Path(__file__).resolve().parent
@@ -53,6 +53,7 @@ DEFAULT = {
     "image_retention_days": 1,
     "max_cache_gb": 10,
     "prefetch_newest_articles": 500,
+    "standby_articles": DEFAULT_STANDBY,
     "feed_fresh_seconds": 120,
     "article_fresh_seconds": 1800,
     "image_fresh_seconds": 86400,
@@ -74,9 +75,30 @@ def load_config():
     return cfg
 
 CFG = load_config()
+CONFIG_WRITE_LOCK = threading.RLock()
+
+def update_runtime_config(patch):
+    """Atomically persist the small set of settings editable from the web UI."""
+    with CONFIG_WRITE_LOCK:
+        try:
+            disk=json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            if not isinstance(disk,dict):disk={}
+        except Exception:
+            disk={}
+        disk.update(patch)
+        tmp=CONFIG_PATH.with_name(CONFIG_PATH.name+"."+uuid.uuid4().hex+".tmp")
+        try:
+            with tmp.open("w",encoding="utf-8") as f:
+                json.dump(disk,f,ensure_ascii=False,indent=2);f.write("\n");f.flush();os.fsync(f.fileno())
+            os.replace(tmp,CONFIG_PATH)
+        finally:
+            tmp.unlink(missing_ok=True)
+        CFG.update(patch)
+
 DATA.mkdir(parents=True, exist_ok=True)
 DB_LOCK = threading.RLock()
 READY = ReadyStore(CACHE)
+READY.set_standby_target(CFG.get("standby_articles",DEFAULT_STANDBY))
 MOBILE_IMAGE_DIR = READY.root / "mobile"
 MOBILE_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
 MOBILE_IMAGE_LOCKS = [threading.Lock() for _ in range(128)]
@@ -86,7 +108,7 @@ REFRESH = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cache-touch")
 MAINTENANCE = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cache-maint")
 LEGACY_CLEANUP_LOCK = threading.RLock()
 LEGACY_CLEANUP_STATE = {"running":False,"last_run":0.0,"result":{"removed":0,"freed_bytes":0}}
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.230"
+UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.231"
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])", re.I)
 FEED_HINT_RE = re.compile(r"(?:\.rdf(?:$|[?#])|/feed/?(?:$|[?#])|[?&](?:xml|feed)(?:=|&|$)|new-soku\.net/new\.php|2chub\.sekaiwatch\.jp|matomeant\.com|owata-net\.com|ikioi\.jp)", re.I)
 
@@ -698,7 +720,7 @@ def resolve_instagram_post(raw_url):
     return {'ok':False,'post_id':info['id'],'post_url':info['url'],'kind':info['kind'],'error':last_error}
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "RPiMatome/0.1.230"
+    server_version = "RPiMatome/0.1.231"
     protocol_version = "HTTP/1.1"
     def translate_path(self, path):
         # Static files are always under web/.
@@ -771,8 +793,7 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/api/ready-list":
             ready_items = READY.list_ready()
             # v0.1.210: old raw-HTML compatibility cache is no longer part of the
-            # public list. Purge only obsolete article HTML; keep the committed
-            # 500 items and the separate new-item buffer (up to 500) intact.
+            # public list. Purge only obsolete article HTML; keep the committed 500, visible new 300, and hidden standby intact.
             cleanup = schedule_legacy_cleanup(ready_items)
             return self._json({"ok":True,"items":ready_items,"checked_at":int(time.time()*1000),"preparation":READY.initial_progress(),"legacy_cached":0,"legacy_cleanup":cleanup})
         if u.path == "/api/ready-article":
@@ -790,6 +811,9 @@ class Handler(SimpleHTTPRequestHandler):
             url=(urllib.parse.parse_qs(u.query).get("url") or [""])[0]
             return self._json({"ok":READY.lease(url)})
         if u.path == "/api/preparation-status": return self._json(READY.initial_progress())
+        if u.path == "/api/standby-settings":
+            return self._json({"ok":True,"standby_articles":READY.standby_target(),
+                               "choices":list(STANDBY_CHOICES),"new_max":MAX_NEW_BUFFER})
         if u.path.startswith("/prepared/assets/"): return self.prepared_asset(u.path)
         if u.path == "/api/mobile-image": return self.mobile_image(u)
         if u.path == "/api/instagram-resolve":
@@ -808,7 +832,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: return self._json({"ok":False,"error":"bad name"},400)
             if data is None: return self._json({"ok":False,"error":"not found"},404)
             return self._json({"ok":True,"data":data})
-        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.230","publication_mode":"ready-only","app_api":1})
+        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.231","publication_mode":"ready-only","app_api":1})
         return super().do_GET()
     def do_HEAD(self):
         u=urllib.parse.urlparse(self.path)
@@ -825,6 +849,16 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception: data={}
         if u.path == "/api/consume-new-buffer":
             return self._json({"ok":True,**READY.consume_new_buffer()})
+        if u.path == "/api/release-standby":
+            return self._json({"ok":True,**READY.release_waiting()})
+        if u.path == "/api/standby-settings":
+            try:n=int(data.get("standby_articles"))
+            except Exception:return self._json({"ok":False,"error":"bad standby_articles"},400)
+            if n not in STANDBY_CHOICES:
+                return self._json({"ok":False,"error":"standby_articles must be 500..3000 by 500"},400)
+            update_runtime_config({"standby_articles":n})
+            applied=READY.set_standby_target(n)
+            return self._json({"ok":True,"standby_articles":applied,"choices":list(STANDBY_CHOICES),"new_max":MAX_NEW_BUFFER})
         if u.path == "/api/reprepare":
             url=str(data.get("url") or "").strip()
             if not re.match(r"^https?://",url,re.I):return self._json({"ok":False,"error":"bad url"},400)
@@ -1047,7 +1081,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--host",default="0.0.0.0"); ap.add_argument("--port",type=int,default=int(CFG["port"])); args=ap.parse_args()
     httpd=ThreadingHTTPServer((args.host,args.port),Handler)
-    print(f"RPi Matome Server v0.1.230  http://{args.host}:{args.port}/")
+    print(f"RPi Matome Server v0.1.231  http://{args.host}:{args.port}/")
     print(f"cache: text {CFG['text_retention_days']}d / image {CFG['image_retention_days']}d / max {CFG['max_cache_gb']}GB")
     try: httpd.serve_forever()
     except KeyboardInterrupt: pass
