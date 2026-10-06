@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, gzip, json, re, time, urllib.parse, urllib.request
+import argparse, gzip, hashlib, json, os, re, tempfile, threading, time, urllib.parse, urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -8,9 +8,20 @@ from html.parser import HTMLParser
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
+CACHE_ROOT = ROOT / "cache"
+ARTICLE_CACHE = CACHE_ROOT / "articles"
+LIST_CACHE = CACHE_ROOT / "lists"
+CACHE_LIMIT_BYTES = 1024 * 1024 * 1024
+CACHE_ROOT.mkdir(parents=True, exist_ok=True)
+ARTICLE_CACHE.mkdir(parents=True, exist_ok=True)
+LIST_CACHE.mkdir(parents=True, exist_ok=True)
+CACHE_LOCK = threading.RLock()
+LIST_MEMORY = {}
+WARMING = set()
+WARM_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="yahoo-warm")
 ORIGIN = "https://news.yahoo.co.jp"
 RSS = ORIGIN + "/rss/"
 UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiYahooNews/0.1.0"
@@ -101,6 +112,121 @@ def article_url(raw):
     return None
 
 
+
+def _cache_key(url):
+    return hashlib.sha256(url.encode("utf-8", "ignore")).hexdigest()
+
+
+def _json_load(path):
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _json_save(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="."+path.name+".", suffix=".tmp", dir=str(path.parent), text=True)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(value, f, ensure_ascii=False, separators=(",", ":"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+
+
+def article_cache_path(url):
+    return ARTICLE_CACHE / (_cache_key(url) + ".json")
+
+
+def list_cache_path(category):
+    return LIST_CACHE / (re.sub(r"[^a-z0-9_-]", "_", category.lower()) + ".json")
+
+
+def load_cached_article(url):
+    normalized = article_url(url)
+    if not normalized:
+        return None
+    data = _json_load(article_cache_path(normalized))
+    if isinstance(data, dict) and data.get("ok"):
+        return data
+    return None
+
+
+def save_cached_article(url, data):
+    normalized = article_url(url)
+    if normalized and isinstance(data, dict) and data.get("ok"):
+        _json_save(article_cache_path(normalized), data)
+
+
+def prune_article_cache(active_urls):
+    active = {_cache_key(u) for u in active_urls if article_url(u)}
+    files = []
+    total = 0
+    for path in ARTICLE_CACHE.glob("*.json"):
+        try:
+            st = path.stat()
+        except OSError:
+            continue
+        if path.stem not in active:
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            continue
+        total += st.st_size
+        files.append((st.st_mtime, st.st_size, path))
+    if total <= CACHE_LIMIT_BYTES:
+        return
+    for _, size, path in sorted(files):
+        if total <= CACHE_LIMIT_BYTES:
+            break
+        try:
+            path.unlink()
+            total -= size
+        except OSError:
+            pass
+
+
+def warm_article(url):
+    normalized = article_url(url)
+    if not normalized:
+        return
+    with CACHE_LOCK:
+        if normalized in WARMING:
+            return
+        WARMING.add(normalized)
+    try:
+        if load_cached_article(normalized):
+            return
+        data = article_data_live(normalized)
+        save_cached_article(normalized, data)
+    except Exception:
+        pass
+    finally:
+        with CACHE_LOCK:
+            WARMING.discard(normalized)
+
+
+def schedule_warm(items, limit=30):
+    for item in (items or [])[:limit]:
+        if not isinstance(item, dict):
+            continue
+        url = article_url(item.get("link"))
+        if not url or load_cached_article(url):
+            continue
+        with CACHE_LOCK:
+            if url in WARMING:
+                continue
+        WARM_POOL.submit(warm_article, url)
+
+
 def preloaded(text):
     m = re.search(r"window\.__PRELOADED_STATE__\s*=\s*(\{.*?\})\s*;?\s*</script", text or "", re.S)
     if not m:
@@ -176,7 +302,7 @@ def rss_items(category):
     return out
 
 
-def list_items(category):
+def fetch_list_items(category):
     category = (category or "latest").strip().lower().replace("-", "_")
     if category not in LABELS:
         raise ValueError("bad category")
@@ -205,6 +331,41 @@ def list_items(category):
         if len(out) >= (180 if category == "latest" else 100):
             break
     return {"ok": True, "category": category, "label": LABELS[category], "items": out, "errors": errors, "checked_at": int(time.time() * 1000)}
+
+
+def refresh_list(category):
+    data = fetch_list_items(category)
+    with CACHE_LOCK:
+        LIST_MEMORY[category] = (time.time(), data)
+    stored = dict(data)
+    stored["_cached_at"] = time.time()
+    _json_save(list_cache_path(category), stored)
+    schedule_warm(data.get("items"), 30 if category == "latest" else 12)
+    return data
+
+
+def list_items(category, force=False):
+    category = (category or "latest").strip().lower().replace("-", "_")
+    if category not in LABELS:
+        raise ValueError("bad category")
+    now = time.time()
+    with CACHE_LOCK:
+        hit = LIST_MEMORY.get(category)
+    if not force and hit and now - hit[0] < 75:
+        schedule_warm(hit[1].get("items"), 30 if category == "latest" else 12)
+        return hit[1]
+    disk = _json_load(list_cache_path(category))
+    if not force and isinstance(disk, dict) and disk.get("ok"):
+        cached_at = float(disk.get("_cached_at") or 0)
+        data = dict(disk)
+        data.pop("_cached_at", None)
+        with CACHE_LOCK:
+            LIST_MEMORY[category] = (cached_at or now, data)
+        if now - cached_at > 60:
+            WARM_POOL.submit(refresh_list, category)
+        schedule_warm(data.get("items"), 30 if category == "latest" else 12)
+        return data
+    return refresh_list(category)
 
 
 def structured_body(detail):
@@ -312,7 +473,7 @@ def comments(article, article_id):
     return out[:30]
 
 
-def article_data(raw_url):
+def article_data_live(raw_url):
     url = article_url(raw_url)
     if not url:
         raise ValueError("Yahoo!ニュースの記事URLではありません")
@@ -373,6 +534,18 @@ def article_data(raw_url):
         "ok": True, "url": url, "title": title, "provider": provider, "date": epoch_ms(date), "hero_image": hero,
         "body": paragraphs, "photos": photos, "comments": article_comments, "checked_at": int(time.time() * 1000),
     }
+
+
+def article_data(raw_url):
+    normalized = article_url(raw_url)
+    if not normalized:
+        raise ValueError("Yahoo!ニュースの記事URLではありません")
+    cached = load_cached_article(normalized)
+    if cached:
+        return cached
+    data = article_data_live(normalized)
+    save_cached_article(data.get("url") or normalized, data)
+    return data
 
 
 def rankings():
@@ -445,10 +618,10 @@ class Handler(SimpleHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         if u.path == "/api/health":
-            return self.json({"ok": True, "version": VERSION, "cache": False, "refresh_seconds": 60})
+            return self.json({"ok": True, "version": VERSION, "cache": True, "cache_mode": "text-only", "image_cache": False, "refresh_seconds": 60, "cache_limit_bytes": CACHE_LIMIT_BYTES})
         if u.path == "/api/list":
             try:
-                return self.json(list_items((q.get("category") or ["latest"])[0]))
+                return self.json(list_items((q.get("category") or ["latest"])[0], force=(q.get("force") or ["0"])[0] == "1"))
             except ValueError as e:
                 return self.json({"ok": False, "error": str(e)}, 400)
             except Exception as e:
@@ -468,19 +641,40 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
 
+def background_refresh_loop(stop_event):
+    # 一覧を先に作り、実際に読まれる前に本文文字キャッシュを温める。
+    while not stop_event.is_set():
+        active_urls = set()
+        for category in ("latest", "top", "local"):
+            try:
+                data = refresh_list(category)
+                active_urls.update(x.get("link") for x in data.get("items") or [] if isinstance(x, dict))
+            except Exception:
+                pass
+        try:
+            prune_article_cache(active_urls)
+        except Exception:
+            pass
+        stop_event.wait(60)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8768)
     args = ap.parse_args()
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    stop_event = threading.Event()
+    refresher = threading.Thread(target=background_refresh_loop, args=(stop_event,), daemon=True, name="yahoo-refresh")
+    refresher.start()
     print(f"RPi Yahoo News Server v{VERSION}  http://{args.host}:{args.port}/")
-    print("content cache: disabled")
+    print("text cache: enabled (images are direct from Yahoo)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
         pass
     finally:
+        stop_event.set()
         httpd.server_close()
 
 

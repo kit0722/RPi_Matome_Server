@@ -81,7 +81,7 @@ echo "[5/5] 起動確認..."
 ok=0
 for i in $(seq 1 20); do
   if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/api/health" 2>/dev/null \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") and d.get("version")=="0.1.1" and d.get("cache") is False else 1)' 2>/dev/null; then
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") and d.get("version")=="0.1.2" and d.get("cache") is True and d.get("cache_mode")=="text-only" and d.get("image_cache") is False else 1)' 2>/dev/null; then
     ok=1
     break
   fi
@@ -105,5 +105,7 @@ curl -fsS "http://127.0.0.1:$PORT/api/health"
 echo
 hostname -I | awk -v p="$PORT" '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./) print "  http://"$i":"p"/"}'
 echo
+curl -fsS --max-time 30 "http://127.0.0.1:$PORT/api/list?category=latest" >/dev/null 2>&1 || true
+echo "最新一覧キャッシュ準備済み（画像本体は保存しません）"
 echo "2chまとめ(8767)とは完全に別サービスです。"
 echo "今後Yahooだけ更新: $APP/update.sh"
