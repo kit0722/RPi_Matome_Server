@@ -1163,13 +1163,14 @@ class ReadyStore:
                 (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
 
     def release_waiting(self):
-        """Release at most one fully-prepared standby article while a viewer is active."""
-        now_ms=time.time()*1000.0
+        """Release up to two fully-prepared standby articles while a viewer is active."""
+        now=time.time()
+        now_ms=now*1000.0
         with self.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             cutoff=self._buffer_cutoff(c)
             if cutoff is None:
-                return {'released':False,'new_buffer':0,'standby':0,'next_interval_seconds':5}
+                return {'released':False,'released_count':0,'new_buffer':0,'standby':0,'next_interval_seconds':5}
             target_row=c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
             try:target=self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
             except Exception:target=DEFAULT_STANDBY
@@ -1186,19 +1187,23 @@ class ReadyStore:
             try:last=float(json.loads(last_row['value'])) if last_row else 0
             except Exception:last=0
             if visible>=MAX_NEW_BUFFER or standby<=0 or (last and now_ms-last<interval*1000):
-                return {'released':False,'new_buffer':visible,'standby':standby,'standby_target':target,
+                return {'released':False,'released_count':0,'new_buffer':visible,'standby':standby,'standby_target':target,
                         'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
-            row=c.execute("""SELECT url FROM articles
+            release_count=max(0,min(2,MAX_NEW_BUFFER-visible,standby))
+            rows=c.execute("""SELECT url FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time<=0 AND state='ready'
-              ORDER BY source_time DESC,ready_time DESC,url LIMIT 1""",(VIEW_SCHEMA_MIN,)).fetchone()
-            if not row:
-                return {'released':False,'new_buffer':visible,'standby':standby,'standby_target':target,
+              ORDER BY source_time DESC,ready_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,release_count)).fetchall()
+            if not rows:
+                return {'released':False,'released_count':0,'new_buffer':visible,'standby':standby,'standby_target':target,
                         'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
-            c.execute("UPDATE articles SET release_time=? WHERE url=?",(now,row['url']))
+            total=len(rows)
+            for i,row in enumerate(rows):
+                c.execute("UPDATE articles SET release_time=? WHERE url=?",
+                          (now+(total-i)*0.000001,row['url']))
             c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',('standby_last_release_ms',json.dumps(now_ms)))
-            visible+=1;standby=max(0,standby-1)
-            return {'released':True,'new_buffer':visible,'standby':standby,'standby_target':target,
+            visible+=total;standby=max(0,standby-total)
+            return {'released':True,'released_count':total,'new_buffer':visible,'standby':standby,'standby_target':target,
                     'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
 
     def consume_new_buffer(self):
