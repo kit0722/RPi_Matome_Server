@@ -1,5 +1,5 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.1",
   "port": 8768,
   "cache": false,
   "refresh_seconds": 60,

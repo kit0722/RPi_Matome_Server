@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse, gzip, json, re, time, urllib.parse, urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -7,7 +8,7 @@ from html.parser import HTMLParser
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 ORIGIN = "https://news.yahoo.co.jp"
@@ -181,11 +182,16 @@ def list_items(category):
         raise ValueError("bad category")
     keys = LATEST if category == "latest" else [category]
     merged, errors = [], []
-    for key in keys:
-        try:
-            merged.extend(rss_items(key))
-        except Exception as e:
-            errors.append(f"{key}:{e}")
+    # "新着"は8カテゴリあるので直列取得だと遅い。保存キャッシュは使わず、
+    # その場でYahoo RSSを並列取得して待ち時間だけ短縮する。
+    with ThreadPoolExecutor(max_workers=min(8, len(keys))) as pool:
+        futures = {pool.submit(rss_items, key): key for key in keys}
+        for future in as_completed(futures):
+            key = futures[future]
+            try:
+                merged.extend(future.result())
+            except Exception as e:
+                errors.append(f"{key}:{e}")
     if not merged and errors:
         raise RuntimeError(" / ".join(errors))
     seen, out = set(), []
@@ -357,18 +363,25 @@ def article_data(raw_url):
         if str(d.get("contentId") or "").lower() != article_id.lower():
             break
         paragraphs.extend(structured_body(d))
+    # 写真とコメントは独立しているため同時取得。本文の保存キャッシュは作らない。
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        photos_future = pool.submit(photo_items, url, detail)
+        comments_future = pool.submit(comments, url, article_id)
+        photos = photos_future.result()
+        article_comments = comments_future.result()
     return {
         "ok": True, "url": url, "title": title, "provider": provider, "date": epoch_ms(date), "hero_image": hero,
-        "body": paragraphs, "photos": photo_items(url, detail), "comments": comments(url, article_id), "checked_at": int(time.time() * 1000),
+        "body": paragraphs, "photos": photos, "comments": article_comments, "checked_at": int(time.time() * 1000),
     }
 
 
 def rankings():
-    groups = {}
-    for key, title, url in [
+    defs = [
         ("access", "アクセスランキング", ORIGIN + "/ranking/access/news"),
         ("comment", "ヤフコメランキング", ORIGIN + "/ranking/comment"),
-    ]:
+    ]
+
+    def one_rank(key, title, url):
         rows = []
         try:
             body, _, _ = fetch(url, timeout=18, referer=ORIGIN + "/")
@@ -383,7 +396,14 @@ def rankings():
                     break
         except Exception:
             pass
-        groups[key] = {"title": title, "items": rows}
+        return key, {"title": title, "items": rows}
+
+    groups = {}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(one_rank, *d) for d in defs]
+        for future in as_completed(futures):
+            key, group = future.result()
+            groups[key] = group
     return {"ok": True, "groups": groups, "checked_at": int(time.time() * 1000)}
 
 
