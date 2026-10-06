@@ -6,6 +6,7 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from ready_store import ReadyStore, MAX_PUBLISHED, MAX_NEW_BUFFER, STANDBY_CHOICES, DEFAULT_STANDBY
 from video_stream import relay as relay_video, warm as warm_video
+from yahoo_news import YahooNewsService
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
@@ -108,7 +109,7 @@ REFRESH = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cache-touch")
 MAINTENANCE = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cache-maint")
 LEGACY_CLEANUP_LOCK = threading.RLock()
 LEGACY_CLEANUP_STATE = {"running":False,"last_run":0.0,"result":{"removed":0,"freed_bytes":0}}
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.236"
+UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.237"
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])", re.I)
 FEED_HINT_RE = re.compile(r"(?:\.rdf(?:$|[?#])|/feed/?(?:$|[?#])|[?&](?:xml|feed)(?:=|&|$)|new-soku\.net/new\.php|2chub\.sekaiwatch\.jp|matomeant\.com|owata-net\.com|ikioi\.jp)", re.I)
 
@@ -404,6 +405,7 @@ def get_cached_or_fetch(url, force=False, timeout=15, referer="", cancel_event=N
         raise
 
 
+YAHOO = YahooNewsService(get_cached_or_fetch)
 
 THUMB_MAP_LOCK = threading.RLock()
 
@@ -720,7 +722,7 @@ def resolve_instagram_post(raw_url):
     return {'ok':False,'post_id':info['id'],'post_url':info['url'],'kind':info['kind'],'error':last_error}
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "RPiMatome/0.1.236"
+    server_version = "RPiMatome/0.1.237"
     protocol_version = "HTTP/1.1"
     def translate_path(self, path):
         # Static files are always under web/.
@@ -821,6 +823,20 @@ class Handler(SimpleHTTPRequestHandler):
             try:return self._json(resolve_instagram_post(raw),200)
             except ValueError as e:return self._json({"ok":False,"error":str(e)},400)
             except Exception as e:return self._json({"ok":False,"error":str(e)},502)
+        if u.path == "/api/yahoo/list":
+            q=urllib.parse.parse_qs(u.query);category=(q.get("category") or ["latest"])[0]
+            try:return self._json(YAHOO.list(category),200,cache_control="no-store")
+            except ValueError as e:return self._json({"ok":False,"error":str(e)},400)
+            except Exception as e:return self._json({"ok":False,"error":str(e)},502)
+        if u.path == "/api/yahoo/rankings":
+            try:return self._json({"ok":True,"groups":YAHOO.rankings(),"checked_at":int(time.time()*1000)},200,cache_control="no-store")
+            except Exception as e:return self._json({"ok":False,"error":str(e)},502)
+        if u.path == "/api/yahoo/article":
+            q=urllib.parse.parse_qs(u.query);url=(q.get("url") or [""])[0]
+            comments=(q.get("comments") or ["1"])[0].lower() not in {"0","false","no"}
+            try:return self._json(YAHOO.article(url,comments),200,cache_control="no-store")
+            except ValueError as e:return self._json({"ok":False,"error":str(e)},400)
+            except Exception as e:return self._json({"ok":False,"error":str(e)},502)
         if u.path == "/api/proxy": return self.api_proxy(u)
         if u.path == "/api/article-cache": return self.api_article_cache(u)
         if u.path == "/api/thumb": return self.api_thumb(u)
@@ -832,7 +848,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: return self._json({"ok":False,"error":"bad name"},400)
             if data is None: return self._json({"ok":False,"error":"not found"},404)
             return self._json({"ok":True,"data":data})
-        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.236","publication_mode":"ready-only","app_api":1})
+        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.237","publication_mode":"ready-only","app_api":1,"yahoo_api":1})
         return super().do_GET()
     def do_HEAD(self):
         u=urllib.parse.urlparse(self.path)
@@ -1084,7 +1100,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--host",default="0.0.0.0"); ap.add_argument("--port",type=int,default=int(CFG["port"])); args=ap.parse_args()
     httpd=ThreadingHTTPServer((args.host,args.port),Handler)
-    print(f"RPi Matome Server v0.1.236  http://{args.host}:{args.port}/")
+    print(f"RPi Matome Server v0.1.237  http://{args.host}:{args.port}/")
     print(f"cache: text {CFG['text_retention_days']}d / image {CFG['image_retention_days']}d / max {CFG['max_cache_gb']}GB")
     try: httpd.serve_forever()
     except KeyboardInterrupt: pass
