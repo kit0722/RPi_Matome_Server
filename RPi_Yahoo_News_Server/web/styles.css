@@ -53,3 +53,33 @@ header,.workspace,.pane-reader-toolbar,.ranking-drawer,.ranking-drawer-head,.dis
 .display-settings-font-controls button{height:38px;border:1px solid #505057;border-radius:7px;background:#232326;color:#f0f0f0;font-size:22px;line-height:1}
 .display-settings-font-controls input[type=range]{width:100%;accent-color:#8ab4f8}
 .display-settings-subtitle{padding:13px 18px 0;font-size:14px;font-weight:700}
+
+
+/* v0.1.6: 表示設定を小さい画面でも最後まで操作できるようにする。 */
+.display-settings-card{
+  top:max(10px,env(safe-area-inset-top));
+  max-height:calc(100dvh - max(20px,env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;
+}
+.display-settings-head{
+  position:sticky;
+  top:0;
+  z-index:3;
+  background:#151517;
+}
+.display-settings-actions{
+  position:sticky;
+  bottom:0;
+  z-index:3;
+  background:#151517;
+  padding-bottom:max(14px,env(safe-area-inset-bottom));
+}
+@media(max-width:700px){
+  .display-settings-card{
+    top:max(6px,env(safe-area-inset-top));
+    width:calc(100vw - 16px);
+    max-height:calc(100dvh - max(12px,env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+  }
+}
