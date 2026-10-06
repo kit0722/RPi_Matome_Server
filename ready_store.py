@@ -193,6 +193,19 @@ class ReadyStore:
                 c.execute("""UPDATE articles SET release_time=COALESCE(ready_time,0)
                              WHERE body_file IS NOT NULL AND ready_time IS NOT NULL""")
                 release_added = True
+            # v0.1.235: release_time is seconds everywhere. v0.1.234 standby
+            # releases accidentally stored milliseconds; normalize any rows/cutoff
+            # produced by that build before publication ordering is evaluated.
+            c.execute("UPDATE articles SET release_time=release_time/1000.0 WHERE release_time>100000000000")
+            bad_cutoff=c.execute("SELECT value FROM status WHERE key='new_buffer_cutoff'").fetchone()
+            if bad_cutoff is not None:
+                try:
+                    bad_cutoff_value=float(json.loads(bad_cutoff['value']))
+                except Exception:
+                    bad_cutoff_value=0
+                if bad_cutoff_value>100000000000:
+                    c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
+                              ('new_buffer_cutoff',json.dumps(bad_cutoff_value/1000.0)))
             # Existing installations already have their committed 500-item cache.
             # Freeze its newest completion time as the buffer boundary on first v0.1.209 start.
             marker=c.execute("SELECT value FROM status WHERE key='new_buffer_cutoff'").fetchone()
@@ -259,7 +272,8 @@ class ReadyStore:
                 break
         if not clean:
             return {'count':self.shared_read_count(),'updated_at':self.shared_read_updated_at()}
-        now_ms=time.time()*1000.0
+        now=time.time()
+        now_ms=now*1000.0
         with self.connect() as c:
             c.executemany(
                 "INSERT INTO shared_reads(url,read_at) VALUES (?,?) ON CONFLICT(url) DO UPDATE SET read_at=MAX(shared_reads.read_at,excluded.read_at)",
@@ -1181,7 +1195,7 @@ class ReadyStore:
             if not row:
                 return {'released':False,'new_buffer':visible,'standby':standby,'standby_target':target,
                         'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER}
-            c.execute("UPDATE articles SET release_time=? WHERE url=?",(now_ms,row['url']))
+            c.execute("UPDATE articles SET release_time=? WHERE url=?",(now,row['url']))
             c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',('standby_last_release_ms',json.dumps(now_ms)))
             visible+=1;standby=max(0,standby-1)
             return {'released':True,'new_buffer':visible,'standby':standby,'standby_target':target,

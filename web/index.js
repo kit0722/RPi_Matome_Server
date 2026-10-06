@@ -2606,7 +2606,12 @@ async function releaseStandbyTick(){
     if(r.ok){
       const d=await r.json();
       delay=Math.max(5000,Math.min(30000,Number(d?.next_interval_seconds||5)*1000));
-      if(d?.released)void checkForNewOnly(false,true);
+      if(d?.released){
+        const count=Math.min(300,Math.max(0,Number(d?.new_buffer||0)));
+        pendingFreshItems=null;
+        if(count>0)showNewBadge(count);
+        void checkForNewOnly(false,true);
+      }
     }
   }catch{}
   standbyReleaseTimer=setTimeout(releaseStandbyTick,delay);
