@@ -106,6 +106,13 @@ echo
 hostname -I | awk -v p="$PORT" '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./) print "  http://"$i":"p"/"}'
 echo
 curl -fsS --max-time 30 "http://127.0.0.1:$PORT/api/list?category=latest" >/dev/null 2>&1 || true
+# 更新ボタンが戻る前に、先頭記事の文字キャッシュを最低3件だけ先取りする。
+# 画像本体は保存しない。30秒で打ち切り、Yahoo側が遅くても更新自体は失敗させない。
+for i in $(seq 1 30); do
+  COUNT=$(find "$APP/cache/articles" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${COUNT:-0}" -ge 3 ]; then break; fi
+  sleep 1
+done
 echo "最新一覧キャッシュ準備済み（画像本体は保存しません）"
 echo "2chまとめ(8767)とは完全に別サービスです。"
 echo "今後Yahooだけ更新: $APP/update.sh"

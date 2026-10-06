@@ -36,5 +36,12 @@ for i in $(seq 1 20); do
   sleep 1
 done
 curl -fsS --max-time 30 "http://127.0.0.1:8768/api/list?category=latest" >/dev/null 2>&1 || true
+# 更新ボタンが戻る前に、先頭記事の文字キャッシュを最低3件だけ先取りする。
+# 画像本体は保存しない。30秒で打ち切り、Yahoo側が遅くても更新自体は失敗させない。
+for i in $(seq 1 30); do
+  COUNT=$(find "$APP/cache/articles" -maxdepth 1 -type f -name '*.json' 2>/dev/null | wc -l | tr -d ' ')
+  if [ "${COUNT:-0}" -ge 3 ]; then break; fi
+  sleep 1
+done
 echo '[Yahoo 4/4] 完了（文字先読みキャッシュ / 画像はYahoo直接 / 1分新着確認）'
 hostname -I | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+\./) print "  http://"$i":8768/"}'
