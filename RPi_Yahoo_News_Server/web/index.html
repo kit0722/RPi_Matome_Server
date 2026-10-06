@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f8fa">
+  <title>Yahooニュース シンプル一覧</title>
+  <link rel="stylesheet" href="styles.css?v=0001">
+</head>
+<body>
+  <header id="appHeader">
+    <div class="title-row">
+      <h1>Yahoo!ニュース</h1>
+      <button id="refreshBtn" type="button">更新</button>
+      <button id="newestBtn" type="button" hidden>新着あり</button>
+      <button id="displaySettingsBtn" type="button">表示設定</button>
+    </div>
+    <nav id="tabs" aria-label="ニュースカテゴリ"></nav>
+    <div class="status-row"><span id="status">読み込み中...</span><span id="updated"></span></div>
+  </header>
+
+  <div class="workspace" id="workspace">
+    <aside class="list-pane" id="listPane"><div id="newsList" class="news-list"></div><div id="error" class="error" hidden></div></aside>
+    <div id="paneSplitter" class="pane-splitter" role="separator" aria-orientation="vertical" tabindex="0"></div>
+    <main class="reader-pane" id="readerPane">
+      <div id="readerEmpty" class="reader-empty"><div class="reader-empty-title">記事を選んでください</div><div class="reader-empty-text">左の記事一覧をクリックすると、ここに本文を表示します。</div></div>
+      <div id="paneReader" class="pane-reader" hidden>
+        <div class="pane-reader-toolbar"><button id="mobileBackBtn" type="button">← 一覧</button><a id="paneOriginalLink" href="#" target="_blank" rel="noopener noreferrer">Yahooで元記事を開く</a></div>
+        <div id="paneReaderScroll" class="pane-reader-scroll">
+          <div id="paneLoading" class="pane-loading">記事を読み込み中...</div>
+          <article id="paneArticle" class="pane-article" hidden>
+            <div id="paneMeta" class="pane-meta"></div><h2 id="paneTitle" class="pane-title"></h2>
+            <div class="pane-hero-wrap"><img id="paneHero" class="pane-hero" alt="" hidden></div>
+            <section id="panePhotoGallery" class="pane-photo-gallery" hidden><div class="pane-photo-gallery-head"><div id="panePhotoGalleryTitle" class="pane-photo-gallery-title">記事の写真</div></div><div id="panePhotoGrid" class="pane-photo-grid"></div></section>
+            <div id="paneBody" class="pane-body"></div>
+            <section class="pane-comments-section"><div class="pane-comments-head"><h3>コメント</h3></div><div id="paneCommentsStatus" class="pane-comments-status">コメント確認中...</div><div id="paneCommentsList" class="pane-comments-list"></div></section>
+          </article>
+          <div id="paneError" class="pane-error" hidden></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <button id="rankingToggle" class="ranking-toggle" type="button"><span class="ranking-toggle-arrow">‹</span><span>ランキング</span></button>
+  <aside id="rankingDrawer" class="ranking-drawer" aria-hidden="true"><div class="ranking-drawer-head"><strong>ランキング</strong><button id="rankingClose" type="button">×</button></div><div id="rankings" class="ranking-content"></div></aside>
+  <div id="drawerBackdrop" class="drawer-backdrop" hidden></div>
+
+  <div id="paneLightbox" class="pane-lightbox" hidden><button id="paneLightboxClose" class="pane-lightbox-close">×</button><button id="paneLightboxPrev" class="pane-lightbox-nav pane-lightbox-prev">‹</button><img id="paneLightboxImage" class="pane-lightbox-image" alt=""><button id="paneLightboxNext" class="pane-lightbox-nav pane-lightbox-next">›</button><div id="paneLightboxCount" class="pane-lightbox-count"></div></div>
+
+  <div id="displaySettingsModal" class="display-settings-modal" hidden><div class="display-settings-backdrop" data-settings-close></div><section class="display-settings-card"><div class="display-settings-head"><strong>表示するカテゴリ</strong><button id="displaySettingsClose">×</button></div><div id="displaySettingsChecks" class="display-settings-checks"></div><div class="display-settings-note">※「地域」は東海（愛知・岐阜・三重）の記事だけ表示します。</div><div class="display-settings-actions"><button id="displaySettingsCancel">キャンセル</button><button id="displaySettingsSave" class="primary">保存</button></div></section></div>
+  <script src="app.js?v=0001"></script>
+</body>
+</html>
