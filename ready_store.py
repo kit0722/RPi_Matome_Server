@@ -1155,7 +1155,7 @@ class ReadyStore:
             c.execute('BEGIN IMMEDIATE')
             cutoff=self._buffer_cutoff(c)
             if cutoff is None:
-                return {'released':False,'new_buffer':0,'standby':0,'next_interval_seconds':30}
+                return {'released':False,'new_buffer':0,'standby':0,'next_interval_seconds':5}
             target_row=c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
             try:target=self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
             except Exception:target=DEFAULT_STANDBY
@@ -1167,7 +1167,7 @@ class ReadyStore:
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time<=0 AND state IN ('ready','retry','preparing')""",
                 (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
-            interval=10 if standby>=200 else 15 if standby>=50 else 30
+            interval=5
             last_row=c.execute("SELECT value FROM status WHERE key='standby_last_release_ms'").fetchone()
             try:last=float(json.loads(last_row['value'])) if last_row else 0
             except Exception:last=0

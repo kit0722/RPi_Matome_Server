@@ -2600,12 +2600,12 @@ async function releaseStandbyTick(){
     standbyReleaseTimer=setTimeout(releaseStandbyTick,30000);
     return;
   }
-  let delay=30000;
+  let delay=5000;
   try{
     const r=await fetch('/api/release-standby',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
     if(r.ok){
       const d=await r.json();
-      delay=Math.max(10000,Math.min(30000,Number(d?.next_interval_seconds||30)*1000));
+      delay=Math.max(5000,Math.min(30000,Number(d?.next_interval_seconds||5)*1000));
       if(d?.released)void checkForNewOnly(false,true);
     }
   }catch{}
@@ -2614,7 +2614,7 @@ async function releaseStandbyTick(){
 function startStandbyReleaseLoop(immediate=false){
   if(WORKER_MODE)return;
   if(standbyReleaseTimer)clearTimeout(standbyReleaseTimer);
-  standbyReleaseTimer=setTimeout(releaseStandbyTick,immediate?250:10000);
+  standbyReleaseTimer=setTimeout(releaseStandbyTick,immediate?250:5000);
 }
 
 async function consumeServerNewBuffer() {
