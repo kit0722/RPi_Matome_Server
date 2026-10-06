@@ -57,6 +57,51 @@ function renderComments(cs){$('paneCommentsStatus').textContent=cs.length?cs.len
 function openPhoto(i){if(!photos.length)return;photoIndex=(i+photos.length)%photos.length;$('paneLightboxImage').src=photos[photoIndex].url;$('paneLightboxCount').textContent=(photoIndex+1)+' / '+photos.length;$('paneLightbox').hidden=false}$('paneLightboxClose').onclick=()=>$('paneLightbox').hidden=true;$('paneLightboxPrev').onclick=e=>{e.stopPropagation();openPhoto(photoIndex-1)};$('paneLightboxNext').onclick=e=>{e.stopPropagation();openPhoto(photoIndex+1)};$('paneLightbox').onclick=e=>{if(e.target===$('paneLightbox'))$('paneLightbox').hidden=true};
 async function loadRanks(){const root=$('rankings');root.textContent='読み込み中...';try{const d=await api('/api/rankings');root.innerHTML='';for(const key of ['access','comment']){const g=d.groups?.[key];if(!g)continue;const h=document.createElement('h2');h.textContent=g.title;root.appendChild(h);const ol=document.createElement('ol');for(const x of g.items||[]){const li=document.createElement('li');li.innerHTML=`<div class="rank-row"><div class="rank-thumbbox">${x.image_url?`<img class="rank-thumb" src="${esc(x.image_url)}">`:''}</div><a class="rank-title" href="#">${esc(x.title)}</a></div>`;li.onclick=e=>{e.preventDefault();setRank(false);openArticle(x,li,true)};ol.appendChild(li)}root.appendChild(ol)}}catch(e){root.textContent=e.message}}
 function setRank(open){$('rankingDrawer').classList.toggle('open',open);$('rankingToggle').classList.toggle('open',open);$('drawerBackdrop').hidden=!open;if(open)loadRanks()}$('rankingToggle').onclick=()=>setRank(!$('rankingDrawer').classList.contains('open'));$('rankingClose').onclick=()=>setRank(false);$('drawerBackdrop').onclick=()=>setRank(false);
-const modal=$('displaySettingsModal'),checks=$('displaySettingsChecks');function openSettings(){checks.innerHTML='';for(const [label] of categories.filter(x=>x[0]!=='新着')){const l=document.createElement('label');l.className='display-settings-check';const c=document.createElement('input');c.type='checkbox';c.value=label;c.checked=enabledSet.has(label);l.append(c,document.createTextNode(label));checks.appendChild(l)}modal.hidden=false}function closeSettings(){modal.hidden=true}$('displaySettingsBtn').onclick=openSettings;$('displaySettingsClose').onclick=closeSettings;$('displaySettingsCancel').onclick=closeSettings;modal.querySelector('[data-settings-close]').onclick=closeSettings;$('displaySettingsSave').onclick=()=>{const next=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));if(!next.size)return;enabledSet=next;localStorage.setItem('yahooSimple:enabledCategories:v1',JSON.stringify([...next]));renderTabs();closeSettings();if(![...tabs.children].some(x=>x.classList.contains('active'))){currentTab='latest';loadList(true)}};
+const modal=$('displaySettingsModal'),checks=$('displaySettingsChecks'),fontScale=$('fontScale'),fontScaleValue=$('fontScaleValue');
+const FONT_SCALE_KEY='yahooSimple:fontScale:v1';
+function clampFontScale(v){return Math.max(80,Math.min(150,Math.round((Number(v)||100)/5)*5))}
+function savedFontScale(){return clampFontScale(localStorage.getItem(FONT_SCALE_KEY)||100)}
+function applyFontScale(percent){
+  const p=clampFontScale(percent),s=p/100,root=document.documentElement.style;
+  const set=(name,base)=>root.setProperty(name,(base*s).toFixed(1)+'px');
+  set('--news-font',14);set('--time-font',11);set('--source-font',10);set('--meta-font',13);
+  set('--article-title-font',30);set('--body-font',18);set('--comment-user-font',14);
+  set('--comment-font',16);set('--comment-meta-font',12);set('--rank-font',12);set('--tab-font',14);
+  fontScale.value=String(p);fontScaleValue.textContent=p+'%';
+  return p;
+}
+let fontScaleBeforeOpen=savedFontScale();
+applyFontScale(fontScaleBeforeOpen);
+function openSettings(){
+  checks.innerHTML='';
+  for(const [label] of categories.filter(x=>x[0]!=='新着')){
+    const l=document.createElement('label');l.className='display-settings-check';
+    const c=document.createElement('input');c.type='checkbox';c.value=label;c.checked=enabledSet.has(label);
+    l.append(c,document.createTextNode(label));checks.appendChild(l)
+  }
+  fontScaleBeforeOpen=savedFontScale();applyFontScale(fontScaleBeforeOpen);modal.hidden=false
+}
+function closeSettings(save=false){
+  if(!save)applyFontScale(fontScaleBeforeOpen);
+  modal.hidden=true
+}
+fontScale.oninput=()=>applyFontScale(fontScale.value);
+$('fontScaleDown').onclick=()=>applyFontScale(clampFontScale(Number(fontScale.value)-5));
+$('fontScaleUp').onclick=()=>applyFontScale(clampFontScale(Number(fontScale.value)+5));
+$('displaySettingsBtn').onclick=openSettings;
+$('displaySettingsClose').onclick=()=>closeSettings(false);
+$('displaySettingsCancel').onclick=()=>closeSettings(false);
+modal.querySelector('[data-settings-close]').onclick=()=>closeSettings(false);
+$('displaySettingsSave').onclick=()=>{
+  const next=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
+  if(!next.size)return;
+  enabledSet=next;
+  localStorage.setItem('yahooSimple:enabledCategories:v1',JSON.stringify([...next]));
+  const saved=applyFontScale(fontScale.value);
+  localStorage.setItem(FONT_SCALE_KEY,String(saved));
+  fontScaleBeforeOpen=saved;
+  renderTabs();closeSettings(true);
+  if(![...tabs.children].some(x=>x.classList.contains('active'))){currentTab='latest';loadList(true)}
+};
 const splitter=$('paneSplitter'),workspace=$('workspace');let dragging=false;function applyWidth(x,persist=false){if(matchMedia('(max-width:700px)').matches)return;const max=Math.max(260,Math.min(620,workspace.getBoundingClientRect().width-420));const w=Math.max(260,Math.min(max,Number(x)||370));document.documentElement.style.setProperty('--list-w',Math.round(w)+'px');if(persist)localStorage.setItem('yahooSimple:listPaneWidth',String(w))}applyWidth(Number(localStorage.getItem('yahooSimple:listPaneWidth'))||370);splitter.onpointerdown=e=>{dragging=true;splitter.setPointerCapture(e.pointerId)};splitter.onpointermove=e=>{if(dragging)applyWidth(e.clientX-workspace.getBoundingClientRect().left)};splitter.onpointerup=e=>{if(!dragging)return;dragging=false;applyWidth(e.clientX-workspace.getBoundingClientRect().left,true)};
 renderTabs();loadList(false);setInterval(checkNew,60*1000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkNew()});

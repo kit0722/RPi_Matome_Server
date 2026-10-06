@@ -1,5 +1,5 @@
 {
-  "version": "0.1.2",
+  "version": "0.1.3",
   "port": 8768,
   "cache": true,
   "cache_mode": "text-only",

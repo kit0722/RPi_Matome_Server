@@ -18,3 +18,38 @@ header,.workspace,.pane-reader-toolbar,.ranking-drawer,.ranking-drawer-head,.dis
 .pane-splitter{background:#1f1f22;border-color:#35353a}.pane-splitter:after{background:#707078}
 .ranking-toggle{background:#2a1719;color:#ff8f8f;border-color:#6e3439}
 .error,.pane-error{background:#2a1719;border-color:#6e3439;color:#ffd7d7}
+
+
+/* v0.1.3: 表示設定の文字サイズ。JSが各変数を80〜150%へ更新する。 */
+:root{
+  --news-font:14px;
+  --time-font:11px;
+  --source-font:10px;
+  --meta-font:13px;
+  --article-title-font:30px;
+  --body-font:18px;
+  --comment-user-font:14px;
+  --comment-font:16px;
+  --comment-meta-font:12px;
+  --rank-font:12px;
+  --tab-font:14px;
+}
+.news-link{font-size:var(--news-font)}
+.time{font-size:var(--time-font)}
+.source{font-size:var(--source-font)}
+.pane-meta{font-size:var(--meta-font)}
+.pane-title{font-size:var(--article-title-font)}
+.pane-body{font-size:var(--body-font)}
+.comment-user{font-size:var(--comment-user-font)}
+.comment-text{font-size:var(--comment-font)}
+.comment-time,.comment-reactions{font-size:var(--comment-meta-font)}
+.rank-title{font-size:var(--rank-font)}
+.tab{font-size:var(--tab-font)}
+.display-settings-font{padding:14px 18px 12px;border-bottom:1px solid #343438}
+.display-settings-font-title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px}
+.display-settings-font-title span{font-size:14px;font-weight:700}
+.display-settings-font-title strong{font-size:15px;min-width:48px;text-align:right}
+.display-settings-font-controls{display:grid;grid-template-columns:42px minmax(0,1fr) 42px;gap:10px;align-items:center}
+.display-settings-font-controls button{height:38px;border:1px solid #505057;border-radius:7px;background:#232326;color:#f0f0f0;font-size:22px;line-height:1}
+.display-settings-font-controls input[type=range]{width:100%;accent-color:#8ab4f8}
+.display-settings-subtitle{padding:13px 18px 0;font-size:14px;font-weight:700}
