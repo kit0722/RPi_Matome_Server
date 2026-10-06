@@ -89,26 +89,27 @@ function openSettings(){
   }
   fontScaleBeforeOpen=savedFontScale();applyFontScale(fontScaleBeforeOpen);modal.hidden=false
 }
-function closeSettings(save=false){
-  if(!save)applyFontScale(fontScaleBeforeOpen);
-  modal.hidden=true
+function persistFontScale(value){
+  const saved=applyFontScale(value);
+  localStorage.setItem(FONT_SCALE_KEY,String(saved));
+  fontScaleBeforeOpen=saved;
+  return saved;
 }
-fontScale.oninput=()=>applyFontScale(fontScale.value);
-$('fontScaleDown').onclick=()=>applyFontScale(clampFontScale(Number(fontScale.value)-5));
-$('fontScaleUp').onclick=()=>applyFontScale(clampFontScale(Number(fontScale.value)+5));
+function closeSettings(){modal.hidden=true}
+fontScale.oninput=()=>persistFontScale(fontScale.value);
+$('fontScaleDown').onclick=()=>persistFontScale(clampFontScale(Number(fontScale.value)-5));
+$('fontScaleUp').onclick=()=>persistFontScale(clampFontScale(Number(fontScale.value)+5));
 $('displaySettingsBtn').onclick=openSettings;
-$('displaySettingsClose').onclick=()=>closeSettings(false);
-$('displaySettingsCancel').onclick=()=>closeSettings(false);
-modal.querySelector('[data-settings-close]').onclick=()=>closeSettings(false);
+$('displaySettingsClose').onclick=()=>closeSettings();
+$('displaySettingsCancel').onclick=()=>closeSettings();
+modal.querySelector('[data-settings-close]').onclick=()=>closeSettings();
 $('displaySettingsSave').onclick=()=>{
   const next=new Set([...checks.querySelectorAll('input:checked')].map(x=>x.value));
   if(!next.size)return;
   enabledSet=next;
   localStorage.setItem('yahooSimple:enabledCategories:v1',JSON.stringify([...next]));
-  const saved=applyFontScale(fontScale.value);
-  localStorage.setItem(FONT_SCALE_KEY,String(saved));
-  fontScaleBeforeOpen=saved;
-  renderTabs();closeSettings(true);
+  persistFontScale(fontScale.value);
+  renderTabs();closeSettings();
   if(![...tabs.children].some(x=>x.classList.contains('active')))currentTab='latest';
   loadList(false);
 };

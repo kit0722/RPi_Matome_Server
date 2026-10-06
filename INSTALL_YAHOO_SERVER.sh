@@ -81,7 +81,7 @@ echo "[5/5] 起動確認..."
 ok=0
 for i in $(seq 1 20); do
   if curl -fsS --max-time 2 "http://127.0.0.1:$PORT/api/health" 2>/dev/null \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") and d.get("version")=="0.1.4" and d.get("cache") is True and d.get("cache_mode")=="text-only" and d.get("image_cache") is False else 1)' 2>/dev/null; then
+    | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("ok") and d.get("version")=="0.1.5" and d.get("cache") is True and d.get("cache_mode")=="text-only" and d.get("image_cache") is False else 1)' 2>/dev/null; then
     ok=1
     break
   fi

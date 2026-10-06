@@ -31,7 +31,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable rpi-yahoo-news.service >/dev/null
 sudo systemctl restart rpi-yahoo-news.service
 for i in $(seq 1 20); do
-  if curl -fsS --max-time 2 http://127.0.0.1:8768/api/health 2>/dev/null | python3 -c 'import json,sys;d=json.load(sys.stdin);sys.exit(0 if d.get("version")=="0.1.4" and d.get("cache") is True and d.get("cache_mode")=="text-only" and d.get("image_cache") is False else 1)' 2>/dev/null; then break; fi
+  if curl -fsS --max-time 2 http://127.0.0.1:8768/api/health 2>/dev/null | python3 -c 'import json,sys;d=json.load(sys.stdin);sys.exit(0 if d.get("version")=="0.1.5" and d.get("cache") is True and d.get("cache_mode")=="text-only" and d.get("image_cache") is False else 1)' 2>/dev/null; then break; fi
   if [ "$i" -eq 20 ]; then sudo systemctl status rpi-yahoo-news.service --no-pager -l || true; exit 1; fi
   sleep 1
 done
