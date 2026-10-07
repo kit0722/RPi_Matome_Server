@@ -65,21 +65,50 @@ function renderComments(cs){$('paneCommentsStatus').textContent=cs.length?cs.len
 function openPhoto(i){if(!photos.length)return;photoIndex=(i+photos.length)%photos.length;$('paneLightboxImage').src=photos[photoIndex].url;$('paneLightboxCount').textContent=(photoIndex+1)+' / '+photos.length;$('paneLightbox').hidden=false}$('paneLightboxClose').onclick=()=>$('paneLightbox').hidden=true;$('paneLightboxPrev').onclick=e=>{e.stopPropagation();openPhoto(photoIndex-1)};$('paneLightboxNext').onclick=e=>{e.stopPropagation();openPhoto(photoIndex+1)};$('paneLightbox').onclick=e=>{if(e.target===$('paneLightbox'))$('paneLightbox').hidden=true};
 async function loadRanks(){const root=$('rankings');root.textContent='読み込み中...';try{const d=await api('/api/rankings');root.innerHTML='';for(const key of ['access','comment']){const g=d.groups?.[key];if(!g)continue;const h=document.createElement('h2');h.textContent=g.title;root.appendChild(h);const ol=document.createElement('ol');for(const x of g.items||[]){const li=document.createElement('li');li.innerHTML=`<div class="rank-row"><div class="rank-thumbbox">${x.image_url?`<img class="rank-thumb" src="${esc(x.image_url)}">`:''}</div><a class="rank-title" href="#">${esc(x.title)}</a></div>`;li.onclick=e=>{e.preventDefault();setRank(false);openArticle(x,li,true)};ol.appendChild(li)}root.appendChild(ol)}}catch(e){root.textContent=e.message}}
 function setRank(open){$('rankingDrawer').classList.toggle('open',open);$('rankingToggle').classList.toggle('open',open);$('drawerBackdrop').hidden=!open;if(open)loadRanks()}$('rankingToggle').onclick=()=>setRank(!$('rankingDrawer').classList.contains('open'));$('rankingClose').onclick=()=>setRank(false);$('drawerBackdrop').onclick=()=>setRank(false);
-const modal=$('displaySettingsModal'),checks=$('displaySettingsChecks'),fontScale=$('fontScale'),fontScaleValue=$('fontScaleValue');
-const FONT_SCALE_KEY='yahooSimple:fontScale:v1';
-function clampFontScale(v){return Math.max(80,Math.min(150,Math.round((Number(v)||100)/5)*5))}
-function savedFontScale(){return clampFontScale(localStorage.getItem(FONT_SCALE_KEY)||100)}
-function applyFontScale(percent){
+const modal=$('displaySettingsModal'),checks=$('displaySettingsChecks');
+const titleFontScale=$('titleFontScale'),titleFontScaleValue=$('titleFontScaleValue');
+const articleFontScale=$('articleFontScale'),articleFontScaleValue=$('articleFontScaleValue');
+const OLD_FONT_SCALE_KEY='yahooSimple:fontScale:v1';
+const TITLE_FONT_SCALE_KEY='yahooSimple:titleFontScale:v1';
+const ARTICLE_FONT_SCALE_KEY='yahooSimple:articleFontScale:v1';
+function clampFontScale(v){return Math.max(80,Math.min(200,Math.round((Number(v)||100)/5)*5))}
+function migratedFontScale(key){
+  const own=localStorage.getItem(key);
+  if(own!==null)return clampFontScale(own);
+  const old=localStorage.getItem(OLD_FONT_SCALE_KEY);
+  const initial=clampFontScale(old||100);
+  localStorage.setItem(key,String(initial));
+  return initial;
+}
+function applyTitleFontScale(percent){
   const p=clampFontScale(percent),s=p/100,root=document.documentElement.style;
-  const set=(name,base)=>root.setProperty(name,(base*s).toFixed(1)+'px');
-  set('--news-font',14);set('--time-font',11);set('--source-font',10);set('--meta-font',13);
-  set('--article-title-font',30);set('--body-font',18);set('--comment-user-font',14);
-  set('--comment-font',16);set('--comment-meta-font',12);set('--rank-font',12);set('--tab-font',14);
-  fontScale.value=String(p);fontScaleValue.textContent=p+'%';
+  root.setProperty('--news-font',(14*s).toFixed(1)+'px');
+  root.setProperty('--article-title-font',(30*s).toFixed(1)+'px');
+  root.setProperty('--rank-font',(12*s).toFixed(1)+'px');
+  titleFontScale.value=String(p);titleFontScaleValue.textContent=p+'%';
   return p;
 }
-let fontScaleBeforeOpen=savedFontScale();
-applyFontScale(fontScaleBeforeOpen);
+function applyArticleFontScale(percent){
+  const p=clampFontScale(percent),s=p/100,root=document.documentElement.style;
+  root.setProperty('--body-font',(18*s).toFixed(1)+'px');
+  root.setProperty('--comment-user-font',(14*s).toFixed(1)+'px');
+  root.setProperty('--comment-font',(16*s).toFixed(1)+'px');
+  root.setProperty('--comment-meta-font',(12*s).toFixed(1)+'px');
+  articleFontScale.value=String(p);articleFontScaleValue.textContent=p+'%';
+  return p;
+}
+function persistTitleFontScale(value){
+  const p=applyTitleFontScale(value);
+  localStorage.setItem(TITLE_FONT_SCALE_KEY,String(p));
+  return p;
+}
+function persistArticleFontScale(value){
+  const p=applyArticleFontScale(value);
+  localStorage.setItem(ARTICLE_FONT_SCALE_KEY,String(p));
+  return p;
+}
+applyTitleFontScale(migratedFontScale(TITLE_FONT_SCALE_KEY));
+applyArticleFontScale(migratedFontScale(ARTICLE_FONT_SCALE_KEY));
 function openSettings(){
   checks.innerHTML='';
   for(const [label] of categories.filter(x=>x[0]!=='新着')){
@@ -87,18 +116,17 @@ function openSettings(){
     const c=document.createElement('input');c.type='checkbox';c.value=label;c.checked=enabledSet.has(label);
     l.append(c,document.createTextNode(label));checks.appendChild(l)
   }
-  fontScaleBeforeOpen=savedFontScale();applyFontScale(fontScaleBeforeOpen);modal.hidden=false
-}
-function persistFontScale(value){
-  const saved=applyFontScale(value);
-  localStorage.setItem(FONT_SCALE_KEY,String(saved));
-  fontScaleBeforeOpen=saved;
-  return saved;
+  applyTitleFontScale(migratedFontScale(TITLE_FONT_SCALE_KEY));
+  applyArticleFontScale(migratedFontScale(ARTICLE_FONT_SCALE_KEY));
+  modal.hidden=false
 }
 function closeSettings(){modal.hidden=true}
-fontScale.oninput=()=>persistFontScale(fontScale.value);
-$('fontScaleDown').onclick=()=>persistFontScale(clampFontScale(Number(fontScale.value)-5));
-$('fontScaleUp').onclick=()=>persistFontScale(clampFontScale(Number(fontScale.value)+5));
+titleFontScale.oninput=()=>persistTitleFontScale(titleFontScale.value);
+articleFontScale.oninput=()=>persistArticleFontScale(articleFontScale.value);
+$('titleFontScaleDown').onclick=()=>persistTitleFontScale(Number(titleFontScale.value)-5);
+$('titleFontScaleUp').onclick=()=>persistTitleFontScale(Number(titleFontScale.value)+5);
+$('articleFontScaleDown').onclick=()=>persistArticleFontScale(Number(articleFontScale.value)-5);
+$('articleFontScaleUp').onclick=()=>persistArticleFontScale(Number(articleFontScale.value)+5);
 $('displaySettingsBtn').onclick=openSettings;
 $('displaySettingsClose').onclick=()=>closeSettings();
 $('displaySettingsCancel').onclick=()=>closeSettings();
@@ -108,7 +136,6 @@ $('displaySettingsSave').onclick=()=>{
   if(!next.size)return;
   enabledSet=next;
   localStorage.setItem('yahooSimple:enabledCategories:v1',JSON.stringify([...next]));
-  persistFontScale(fontScale.value);
   renderTabs();closeSettings();
   if(![...tabs.children].some(x=>x.classList.contains('active')))currentTab='latest';
   loadList(false);

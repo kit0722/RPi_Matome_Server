@@ -8,7 +8,7 @@ from html.parser import HTMLParser
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
-VERSION = "0.1.6"
+VERSION = "0.1.7"
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
 CACHE_ROOT = ROOT / "cache"
