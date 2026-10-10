@@ -307,7 +307,7 @@ function readSet() {
   // takes effect immediately and after returning from an article.
   try {
     const persisted = JSON.parse(localStorage.getItem(READ_KEY) || "[]");
-    if (Array.isArray(persisted)) sharedReadSet = new Set(persisted);
+    if (Array.isArray(persisted)) for(const url of persisted) if(typeof url==='string'&&url)sharedReadSet.add(url);
   } catch {}
   return new Set(sharedReadSet);
 }
@@ -2016,7 +2016,13 @@ function applyPeerCommittedList(items, cutoff) {
   if(!Array.isArray(items)||!items.length||!(Number(cutoff)>0))return false;
   const committed=items.filter(x=>Number(x?.ready_time||x?.timestamp||0)<=Number(cutoff)).slice(0,500);
   if(!committed.length)return false;
-  const oldScroll=leftPaneEl?.scrollTop||0;
+  const mobile=isMobileLayout();
+  const scroller=mobile?(document.scrollingElement||document.documentElement):leftPaneEl;
+  const oldScroll=scroller?.scrollTop||0;
+  const viewTop=mobile?0:(leftPaneEl?.getBoundingClientRect().top||0);
+  const firstVisible=[...listEl.querySelectorAll('.item')].find(row=>row.getBoundingClientRect().bottom>viewTop+6);
+  const anchorLink=firstVisible?.dataset.link||'';
+  const anchorTop=firstVisible?.getBoundingClientRect().top||0;
   const oldPage=currentPage;
   allItems=committed;
   fillSourceFilter(allItems);
@@ -2028,7 +2034,14 @@ function applyPeerCommittedList(items, cutoff) {
   currentPage=oldPage;
   lastRenderKey='';
   render(true,{preserveReader:true});
-  requestAnimationFrame(()=>leftPaneEl?.scrollTo({top:oldScroll,behavior:'auto'}));
+  requestAnimationFrame(()=>{
+    const target=anchorLink?[...listEl.querySelectorAll('.item')].find(row=>row.dataset.link===anchorLink):null;
+    const scrollerTarget=mobile?window:leftPaneEl;
+    if(target){
+      const delta=target.getBoundingClientRect().top-anchorTop;
+      if(Math.abs(delta)>0.5)scrollerTarget?.scrollBy?.({top:delta,behavior:'auto'});
+    }else scrollerTarget?.scrollTo?.({top:oldScroll,behavior:'auto'});
+  });
   return true;
 }
 
@@ -2765,6 +2778,7 @@ startStandbyReleaseLoop(true);
 
 
 window.addEventListener('message',e=>{
+  if(e.origin!==location.origin || e.source!==readerFrame?.contentWindow)return;
   if (e?.data?.type==='matome-read' && e.data.url) {
     markRead(e.data.url);
     // If the article reports itself read while it is already open in the desktop
