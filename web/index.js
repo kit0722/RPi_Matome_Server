@@ -1858,6 +1858,20 @@ async function fetchFullFastSet() {
   };
 }
 
+// Public list and offline clients use Unix milliseconds; older saved lists may
+// still carry second-based timestamps from the v0.1.241 transition.
+const ARTICLE_LIST_DATE_FORMAT = new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',hour12:false});
+function normalizePublicEpochMs(raw) {
+  const n=Number(raw)||0;
+  return n>0&&n<1e11?n*1000:n;
+}
+function normalizeReadyListTime(item) {
+  const readyMs=normalizePublicEpochMs(item?.ready_time);
+  const stamp=item?.ready&&readyMs?readyMs:normalizePublicEpochMs(item?.source_time||item?.timestamp);
+  return {...item,ready_time:readyMs||item?.ready_time,timestamp:stamp,
+    time:stamp?ARTICLE_LIST_DATE_FORMAT.format(new Date(stamp)):'--:--'};
+}
+
 function saveListCache(items) {
   try {
     localStorage.setItem(LIST_CACHE_KEY, JSON.stringify((items || []).slice(0, 1000)));
@@ -1870,7 +1884,7 @@ function restoreListCache() {
     const items = JSON.parse(localStorage.getItem(LIST_CACHE_KEY) || "[]");
     const meta = JSON.parse(localStorage.getItem(LIST_CACHE_META_KEY) || "{}");
     if (!Array.isArray(items) || items.length < 10) return null;
-    return {items, savedAt: Number(meta.savedAt || 0)};
+    return {items:items.map(normalizeReadyListTime), savedAt: Number(meta.savedAt || 0)};
   } catch {
     return null;
   }
@@ -1879,7 +1893,7 @@ function restoreListCache() {
 async function restoreSharedListCache() {
   const snap = await window.MatomePi?.loadSnapshot?.('article_list');
   if (!snap || !Array.isArray(snap.items) || snap.items.length < 10) return null;
-  return {items:snap.items, savedAt:Number(snap.savedAt || 0)};
+  return {items:snap.items.map(normalizeReadyListTime), savedAt:Number(snap.savedAt || 0)};
 }
 function saveSharedListCache(items) { /* The worker owns publication. */ }
 
@@ -2014,7 +2028,8 @@ function applyFreshList(items) {
 
 function applyPeerCommittedList(items, cutoff) {
   if(!Array.isArray(items)||!items.length||!(Number(cutoff)>0))return false;
-  const committed=items.filter(x=>Number(x?.ready_time||x?.timestamp||0)<=Number(cutoff)).slice(0,500);
+  // The cutoff is stored in seconds; public ready_time is in milliseconds.
+  const committed=items.filter(x=>normalizePublicEpochMs(x?.ready_time||x?.timestamp||0)<=Number(cutoff)*1000).slice(0,500);
   if(!committed.length)return false;
   const mobile=isMobileLayout();
   const scroller=mobile?(document.scrollingElement||document.documentElement):leftPaneEl;
@@ -2098,15 +2113,7 @@ async function fetchReadyList() {
   const response=await fetch('/api/ready-list',{cache:'no-store'});
   if (!response.ok) throw new Error('完成一覧を取得できません');
   const result=await response.json();
-  const fmt=new Intl.DateTimeFormat('ja-JP',{hour:'2-digit',minute:'2-digit',hour12:false});
-  result.items=keepAllowedMatomeItems(result.items||[]).filter(x=>x.link).map(x=>{
-    // v0.1.46: read state must never affect publication order.
-    // Completed articles are ordered only by ready_time; legacy rows use their source time.
-    const stamp = x.ready && x.ready_time
-      ? Number(x.ready_time)
-      : Number(x.source_time || x.timestamp || 0);
-    return {...x,timestamp:stamp,time:stamp?fmt.format(new Date(stamp)):"--:--"};
-  }).sort((a,b)=>{
+  result.items=keepAllowedMatomeItems(result.items||[]).filter(x=>x.link).map(normalizeReadyListTime).sort((a,b)=>{
     const ar=a.ready?1:0, br=b.ready?1:0;
     if (ar!==br) return br-ar;
     return (b.timestamp||0)-(a.timestamp||0);
@@ -2696,7 +2703,7 @@ function restoreMobileReturnSnapshot() {
   try {
     const saved = JSON.parse(sessionStorage.getItem(MOBILE_RETURN_ITEMS_KEY) || '[]');
     if (!Array.isArray(saved) || !saved.length) return false;
-    allItems = saved.slice(0, 500);
+    allItems = saved.slice(0, 500).map(normalizeReadyListTime);
     fillSourceFilter(allItems);
     const savedSource = sessionStorage.getItem('matomeReturnSource') || '';
     if ([...sourceFilter.options].some(o => o.value === savedSource)) {
