@@ -124,6 +124,72 @@ function restoreReaderScroll() {
 }
 
 
+// Keep the visible text line at the same screen position when delayed media
+// loads or browser layout changes affect content above it. Never override
+// the user's active scrolling, and leave page navigation/restoration alone.
+
+function protectReaderPosition() {
+  if (PREPARING || window.__matomeReaderPositionGuardStarted) return;
+  window.__matomeReaderPositionGuardStarted = true;
+  const header = document.getElementById('readerHeader');
+  let anchor = null, frame = 0, lastUserAction = -Infinity, correction = false;
+  const anchorRect = (node, offset) => {
+    if (!node?.isConnected || !contentEl.contains(node) || node.nodeType !== Node.TEXT_NODE || !node.length) return null;
+    const range = document.createRange();
+    const from = Math.min(offset, node.length - 1);
+    range.setStart(node, from);
+    range.setEnd(node, from + 1);
+    return range.getBoundingClientRect();
+  };
+  const remember = () => {
+    if (window.scrollY < 40 || document.hidden) { anchor = null; return; }
+    const y = Math.min(innerHeight - 24, Math.max(32, (header?.getBoundingClientRect().bottom || 0) + 55));
+    if (y >= innerHeight - 12) { anchor = null; return; }
+    const x = Math.min(innerWidth - 24, Math.max(24, innerWidth / 2));
+    let range = document.caretRangeFromPoint?.(x, y);
+    if (!range && document.caretPositionFromPoint) {
+      const p = document.caretPositionFromPoint(x, y);
+      if (p) { range = document.createRange(); range.setStart(p.offsetNode, p.offset); range.collapse(true); }
+    }
+    const node = range?.startContainer;
+    if (!node || node.nodeType !== Node.TEXT_NODE || !contentEl.contains(node)) { anchor = null; return; }
+    const offset = Math.min(range.startOffset, Math.max(0, node.length - 1));
+    const rect = anchorRect(node, offset);
+    anchor = rect ? {node, offset, top:rect.top} : null;
+  };
+  const stabilize = () => {
+    frame = 0;
+    if (!anchor) { remember(); return; }
+    if (document.hidden || articleEl.hidden || (lightbox && !lightbox.hidden) ||
+        readerBackInFlight || performance.now() - lastUserAction < 350) { remember(); return; }
+    const rect = anchorRect(anchor.node, anchor.offset);
+    if (rect) {
+      const delta = rect.top - anchor.top;
+      if (Math.abs(delta) >= 1 && Math.abs(delta) < 400) {
+        correction = true;
+        window.scrollBy({top:delta, behavior:'auto'});
+        correction = false;
+      }
+    }
+    remember();
+  };
+  const schedule = () => { if (!frame) frame = requestAnimationFrame(stabilize); };
+  const userAction = () => { lastUserAction = performance.now(); requestAnimationFrame(remember); };
+  for (const type of ['touchstart','touchmove','wheel','pointerdown','keydown'])
+    window.addEventListener(type, userAction, {passive:true});
+  window.addEventListener('scroll', () => {
+    if (!correction && performance.now() - lastUserAction < 1200) requestAnimationFrame(remember);
+  }, {passive:true});
+  window.addEventListener('resize', userAction, {passive:true});
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(schedule).observe(contentEl);
+  new MutationObserver(schedule).observe(contentEl, {
+    childList:true, subtree:true, attributes:true,
+    attributeFilter:['class','style','src','width','height']
+  });
+  contentEl.addEventListener('load', schedule, true);
+  remember();
+}
+
 const loadingEl = document.getElementById("loading");
 const articleEl = document.getElementById("article");
 const metaEl = document.getElementById("meta");
@@ -1961,10 +2027,11 @@ async function loadPreparedArticle() {
   }catch{}
   // First-paint fast path: the snapshot is already validated.  Reveal it before
   // display-only cleanup/header normalization so the user never stares at "読み込み中…".
+  // Normalize in the same task as the first reveal: do not paint the raw snapshot
+  // and then remove spacers/comments one frame later (which shifts the reader).
   loadingEl.hidden=true;articleEl.hidden=false;
-  applyReaderFont(localStorage.getItem(readerFontKey())||16,false);restoreReaderScroll();markArticleReadAsync();
+  applyReaderFont(localStorage.getItem(readerFontKey())||16,false);
   fetch('/api/ready-lease?url='+encodeURIComponent(requestedUrl),{cache:'no-store'}).catch(()=>{});
-  await new Promise(resolve=>requestAnimationFrame(()=>resolve()));
   stripDisplayChrome(contentEl);
   stripNews4vipQualityDisplay(contentEl);
   stripItsokuLeadMetaDisplay(contentEl);
@@ -2075,6 +2142,11 @@ async function loadPreparedArticle() {
   // Final pass also covers content restored by integrity guards and structured comments appended above.
   normalizeReaderTextSizing(contentEl);
   normalizeReaderArticleSpacing(contentEl);
+  restoreReaderScroll();
+  markArticleReadAsync();
+  // Scroll restoration schedules its last correction at 350ms. Start guarding
+  // subsequent media reflows only after that deliberate navigation step ends.
+  if (!PREPARING) setTimeout(protectReaderPosition, 460);
   if(maybeRefreshUshi32Prepared(article))return;
   maybeRefreshMissingFirstReply(article);
   maybeRefreshProviderPrepared(article);
