@@ -1270,7 +1270,7 @@ class ReadyStore:
                 self.fail(row['url'],'完成一覧メタデータの破損を検出・再準備中')
                 continue
             revision=(row['revision'] or str(int(float(row['ready_time'] or 0))))
-            public_time=float(row['release_time'] or row['ready_time'] or 0)
+            public_time=(float(row['release_time'])*1000.0 if row['release_time'] else float(row['ready_time'] or 0))
             item.update(source_time=row['source_time'],ready_time=public_time,timestamp=public_time,
                         thumb=row['thumb'],ready=True,title=row['title'],revision=revision)
             items.append(item)
@@ -1314,7 +1314,7 @@ class ReadyStore:
                 'title':str(row['title'] or item.get('title') or ''),
                 'source':str(item.get('source') or ''),
                 'source_time':float(row['source_time'] or 0),
-                'ready_time':float(row['release_time'] or row['ready_time'] or 0),
+                'ready_time':(float(row['release_time'])*1000.0 if row['release_time'] else float(row['ready_time'] or 0)),
                 'thumb':str(row['thumb'] or ''),
                 'revision':str(row['revision'] or str(int(float(row['ready_time'] or 0)))),
                 'body_bytes':body_bytes,
