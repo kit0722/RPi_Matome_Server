@@ -1495,7 +1495,9 @@ function maybeRefreshLateSiteComments(article){
   // アルファ/GOSSIP/VIPPERな俺は公開後に読者コメントが増える。完成時点で0件/少数でも成功扱いのため、
   // 新しい記事を実際に開いた時だけ一定間隔で現在HTMLを取り直す。本文表示は待たせない。
   const now=Date.now();
-  const sourceMs=Number(article?.source_time||0)*1000;
+  const sourceTime=Number(article?.source_time||0);
+  // Prepared snapshots use epoch milliseconds; tolerate older second timestamps.
+  const sourceMs=sourceTime>0&&sourceTime<1e11?sourceTime*1000:sourceTime;
   const age=sourceMs?now-sourceMs:0;
   if(age && age<4*60*1000)return false;
   if(age && age>72*60*60*1000)return false;
