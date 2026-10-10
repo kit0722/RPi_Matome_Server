@@ -1082,9 +1082,11 @@ class ReadyStore:
             publish_time = previous['ready_time'] if was_completed else now
             marker=self._buffer_cutoff(c)
             if was_completed:
-                release_time=float(previous['release_time'] or previous['ready_time'] or 0)
+                # Keep hidden standby (0) hidden through reprepare.
+                previous_release=previous['release_time']
+                release_time=float(previous_release) if previous_release is not None else float(previous['ready_time'] or 0)/1000.0
             elif marker is None:
-                release_time=publish_time
+                release_time=publish_time/1000.0
             else:
                 # v0.1.232: while standby is still being built, do not make genuinely
                 # current articles wait behind the hidden queue. Fresh source articles
@@ -1097,7 +1099,7 @@ class ReadyStore:
                 source_time=float(previous['source_time'] or 0)
                 source_age=max(0.0,now-source_time) if source_time>0 else 10**12
                 live_arrival=source_age<=20*60*1000
-                release_time=publish_time if live_arrival and visible_now<MAX_NEW_BUFFER else 0
+                release_time=publish_time/1000.0 if live_arrival and visible_now<MAX_NEW_BUFFER else 0
             revision_seed = json.dumps({
                 'title': snapshot.get('title') or '',
                 'html': snapshot.get('html') or '',
