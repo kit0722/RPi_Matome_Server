@@ -1423,6 +1423,12 @@ function pollPreparedRevision(oldRevision,onReady=null){
       const next=String(data?.article?.revision||'');
       if(res.ok && next && next!==before){
         try{onReady?.(next);}catch{}
+        // A background reprepare must not reload the page underneath someone
+        // actively reading. The fresh revision is picked up on the next open.
+        if(!PREPARING && window.scrollY>80){
+          console.info('READER_REVISION_DEFERRED',JSON.stringify({url:requestedUrl,revision:next}));
+          return;
+        }
         saveReaderScroll();
         const q=new URLSearchParams(location.search);q.set('rev',next);
         location.replace(location.pathname+'?'+q.toString());return;
