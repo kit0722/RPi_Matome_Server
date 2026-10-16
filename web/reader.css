@@ -1018,6 +1018,7 @@ html.mobile-ui .content {
   #readerHeader {gap:5px;padding:8px 7px;}
   #readerHeader .reader-font-size-control {gap:3px;margin-right:0;}
   #readerHeader .reader-font-size-control .reader-font-step {
+    display:inline-flex !important;
     min-width:32px !important;min-height:32px !important;
   }
 }
