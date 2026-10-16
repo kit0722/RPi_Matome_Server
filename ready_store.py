@@ -1212,6 +1212,27 @@ class ReadyStore:
                 AND release_time>? AND state IN ('ready','retry','preparing')""",
                 (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
 
+    def new_buffer_status(self):
+        """Small read-only 5-second poll; avoids sending 500-800 article rows."""
+        with self.connect() as c:
+            cutoff=float(self._buffer_cutoff(c) or 0)
+            current=c.execute("""SELECT COUNT(*) n,COALESCE(MAX(release_time),0) latest
+              FROM articles WHERE schema_version>=?
+                AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time>? AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,cutoff)).fetchone()
+            ready=c.execute("""SELECT COUNT(*) n FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time<=0 AND state='ready'""",
+                (VIEW_SCHEMA_MIN,)).fetchone()
+        return {
+            'ok':True,
+            'new_buffer':min(MAX_NEW_BUFFER,int(current['n'] or 0)),
+            'new_buffer_cutoff':cutoff,
+            'latest_new_release_time':float(current['latest'] or 0),
+            'standby_ready':int(ready['n'] or 0)
+        }
+
     def release_waiting(self):
         """Release up to two fully-prepared standby articles while a viewer is active."""
         now=time.time()
@@ -1230,9 +1251,11 @@ class ReadyStore:
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time>? AND state IN ('ready','retry','preparing')""",
                 (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+            # Only immediately releasable ready rows count as standby stock.
+            # Retrying/preparing rows have old metadata but cannot be released.
             standby=int(c.execute("""SELECT COUNT(*) FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND release_time<=0 AND state IN ('ready','retry','preparing')""",
+                AND release_time<=0 AND state='ready'""",
                 (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
             interval=5
             last_row=c.execute("SELECT value FROM status WHERE key='standby_last_release_ms'").fetchone()
@@ -1261,17 +1284,53 @@ class ReadyStore:
             return {'released':True,'released_count':total,'new_buffer':visible,'standby':standby,'standby_target':target,
                     'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER,'slid_count':slid}
 
-    def consume_new_buffer(self):
-        """Merge all currently completed new-buffer articles into the committed 500-item cache."""
+    def consume_new_buffer(self, through=None):
+        """Atomically acknowledge just the new rows the viewer actually saw.
+
+        ``through`` is the latest new release timestamp advertised with the
+        previous ready-list response, in seconds. Rows released afterward are
+        not silently consumed. This is idempotent on retry and never rolls the
+        cutoff backward. File cleanup is deliberately not run on this hot path:
+        the server schedules maintenance after responding to the HTTP caller.
+        """
+        try:
+            bound=float(through) if through is not None else None
+            if bound is not None and (not (0 < bound < 10**12)):
+                bound=None
+        except (TypeError,ValueError,OverflowError):
+            bound=None
         with self.connect() as c:
-            row=c.execute("""SELECT MAX(release_time) t FROM articles
+            c.execute('BEGIN IMMEDIATE')
+            old=self._buffer_cutoff(c)
+            cutoff=float(old or 0)
+            query="""SELECT MAX(release_time) t, COUNT(*) n FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND release_time>0 AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,)).fetchone()
-            newest=float(row['t'] or 0)
-            if newest:
-                c.execute('INSERT OR REPLACE INTO status VALUES (?,?)',('new_buffer_cutoff',json.dumps(newest)))
-        self.maintain()
-        return {'new_buffer':self.buffer_count(),'committed':min(MAX_BODY_CACHE,self.completed_count()),'new_buffer_cutoff':newest}
+                AND release_time>? AND state IN ('ready','retry','preparing')"""
+            args=[VIEW_SCHEMA_MIN,cutoff]
+            if bound is not None:
+                query+=" AND release_time<=?"
+                args.append(bound)
+            row=c.execute(query,args).fetchone()
+            acknowledged=int(row['n'] or 0)
+            newest=float(row['t'] or cutoff)
+            if newest>cutoff:
+                c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
+                          ('new_buffer_cutoff',json.dumps(newest)))
+                cutoff=newest
+            pending=int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time>? AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+            base=int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time>0 AND release_time<=? AND state IN ('ready','retry','preparing')""",
+                (VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+            return {'new_buffer':min(MAX_NEW_BUFFER,pending),
+                    'committed':min(MAX_BODY_CACHE,base),
+                    'new_buffer_cutoff':cutoff,
+                    'consumed_count':acknowledged,
+                    'acknowledged_through':bound,
+                    'ok':True}
 
     def completed_count(self):
         with self.connect() as c:
@@ -1329,51 +1388,89 @@ class ReadyStore:
             items.append(item)
         return items
 
-    def app_manifest(self):
-        """Return compact immutable-ready metadata for the iPhone offline sync client.
+    def app_manifest(self, scope='published'):
+        """Return ready articles in priority order, including hidden standby if requested.
 
-        This is deliberately read-only and does not alter publication/read state.
-        The app may retain older rows locally even after they leave the server's
-        current 500-item publication window.
+        scope=all is used by the native iPhone Wi-Fi archive:
+        1) newest unconsumed buffer (up to 300)
+        2) committed visible list (500)
+        3) private standby stock (configured 500..3000).
+        This endpoint is read-only: downloading standby must not publish it.
         """
+        include_hidden = scope == 'all'
         with self.connect() as c:
-            rows=c.execute("""SELECT url,item,source_time,ready_time,release_time,body_file,assets,title,thumb,revision
-              FROM articles
-              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND release_time>0 AND (state='ready' OR state IN ('retry','preparing'))
-              ORDER BY release_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,MAX_BODY_CACHE)).fetchall()
-            asset_sizes={r['path']:int(r['size'] or 0) for r in c.execute('SELECT path,size FROM asset_files')}
-        out=[]
-        for row in rows:
-            body_path=self.bodies / row['body_file']
-            try: body_bytes=int(body_path.stat().st_size)
+            cutoff = self._buffer_cutoff(c)
+            target_row = c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
+            try:
+                standby_target = self._clamp_standby_target(
+                    json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
+            except (ValueError, TypeError, json.JSONDecodeError):
+                standby_target = DEFAULT_STANDBY
+            rows = []
+            def add(sql, params, tier):
+                for item in c.execute(sql, params).fetchall():
+                    rows.append((item,tier))
+            basic = """schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+              AND state IN ('ready','retry','preparing')"""
+            if not include_hidden or cutoff is None:
+                # Preserve the legacy 500-item manifest for callers that do
+                # not explicitly request the expanded Wi-Fi archive.
+                add("SELECT * FROM articles WHERE "+basic+
+                    " AND release_time>0 ORDER BY release_time DESC,url LIMIT ?",
+                    (VIEW_SCHEMA_MIN,MAX_BODY_CACHE),'committed')
+            else:
+                add("SELECT * FROM articles WHERE "+basic+
+                    " AND release_time>? ORDER BY release_time DESC,url LIMIT ?",
+                    (VIEW_SCHEMA_MIN,cutoff,MAX_NEW_BUFFER),'new')
+                add("SELECT * FROM articles WHERE "+basic+
+                    " AND release_time>0 AND release_time<=? ORDER BY release_time DESC,url LIMIT ?",
+                    (VIEW_SCHEMA_MIN,cutoff,MAX_BODY_CACHE),'committed')
+            if include_hidden:
+                # Only fully ready hidden records are eligible for background
+                # archive; retry/preparing entries must not inflate progress.
+                add("""SELECT * FROM articles WHERE schema_version>=?
+                  AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                  AND release_time<=0 AND state='ready'
+                  ORDER BY source_time DESC,ready_time DESC,url LIMIT ?""",
+                    (VIEW_SCHEMA_MIN,standby_target),'standby')
+            asset_sizes = {r['path']:int(r['size'] or 0) for r in
+                           c.execute('SELECT path,size FROM asset_files')}
+        out = []
+        for row,tier in rows:
+            body_path = self.bodies / row['body_file']
+            try: body_bytes = int(body_path.stat().st_size)
             except OSError: continue
-            try:item=json.loads(row['item'])
-            except Exception:item={}
-            try:assets=[a for a in json.loads(row['assets'] or '[]') if ASSET_RE.fullmatch(str(a or ''))]
-            except Exception:assets=[]
-            asset_bytes=0
-            valid_assets=0
+            if body_bytes <= 0: continue
+            try: item = json.loads(row['item'])
+            except Exception: item = {}
+            try: assets = [a for a in json.loads(row['assets'] or '[]')
+                           if ASSET_RE.fullmatch(str(a or ''))]
+            except Exception: assets = []
+            asset_bytes = 0
+            valid_assets = 0
             for public in assets:
-                size=asset_sizes.get(public)
+                size = asset_sizes.get(public)
                 if size is None:
-                    try:size=int(self.asset_path(public).stat().st_size)
-                    except OSError:continue
-                asset_bytes+=max(0,int(size));valid_assets+=1
-            url=str(row['url'] or '')
+                    try: size = int(self.asset_path(public).stat().st_size)
+                    except OSError: continue
+                asset_bytes += max(0,int(size))
+                valid_assets += 1
+            url = str(row['url'] or '')
             out.append({
-                'id':hashlib.sha256(url.encode('utf-8')).hexdigest(),
-                'url':url,
-                'title':str(row['title'] or item.get('title') or ''),
-                'source':str(item.get('source') or ''),
-                'source_time':float(row['source_time'] or 0),
-                'ready_time':(float(row['release_time'])*1000.0 if row['release_time'] else float(row['ready_time'] or 0)),
-                'thumb':str(row['thumb'] or ''),
-                'revision':str(row['revision'] or str(int(float(row['ready_time'] or 0)))),
-                'body_bytes':body_bytes,
-                'asset_count':valid_assets,
-                'asset_bytes':asset_bytes,
-                'total_bytes':body_bytes+asset_bytes,
+                'id': hashlib.sha256(url.encode('utf-8')).hexdigest(),
+                'url': url,
+                'title': str(row['title'] or item.get('title') or ''),
+                'source': str(item.get('source') or ''),
+                'source_time': float(row['source_time'] or 0),
+                'ready_time': (float(row['release_time'])*1000.0
+                               if row['release_time'] else float(row['ready_time'] or 0)),
+                'tier': tier,
+                'thumb': str(row['thumb'] or ''),
+                'revision': str(row['revision'] or str(int(float(row['ready_time'] or 0)))),
+                'body_bytes': body_bytes,
+                'asset_count': valid_assets,
+                'asset_bytes': asset_bytes,
+                'total_bytes': body_bytes+asset_bytes,
             })
         return out
 
@@ -1927,10 +2024,18 @@ class ReadyStore:
             cutoff=self._buffer_cutoff(c)
             if cutoff is None:
                 buffer_count=0
+                newest_release=0.0
             else:
-                buffer_count=int(c.execute("""SELECT COUNT(*) FROM articles
-                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                    AND release_time>? AND state IN ('ready','retry','preparing')""",(VIEW_SCHEMA_MIN,cutoff)).fetchone()[0] or 0)
+                buffer_row=c.execute("""SELECT COUNT(*) n,COALESCE(MAX(release_time),0) latest
+                  FROM articles WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND release_time>? AND state IN ('ready','retry','preparing')""",
+                    (VIEW_SCHEMA_MIN,cutoff)).fetchone()
+                buffer_count=int(buffer_row['n'] or 0)
+                newest_release=float(buffer_row['latest'] or 0.0)
+            releasable_standby=int(c.execute("""SELECT COUNT(*) FROM articles
+              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                AND release_time<=0 AND state='ready'""",
+                (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
         normal = ready_count >= MAX_BODY_CACHE or (urls and completed==len(urls))
         counts=dict(state_counts)
         counts['retry_total']=q['retry_total']
@@ -1946,6 +2051,10 @@ class ReadyStore:
         return dict(status, initial_total=min(MAX_BODY_CACHE,len(urls)),
                     initial_ready=min(MAX_BODY_CACHE,max(completed,committed_count)),
                     active_ready=committed_count, new_buffer=min(MAX_NEW_BUFFER,buffer_count),
+                    new_buffer_cutoff=float(cutoff or 0),
+                    latest_new_release_time=newest_release,
+                    standby_ready=releasable_standby,
+                    standby_held=standby_count,
                     retained_total=committed_count+min(MAX_NEW_BUFFER,buffer_count)+standby_count,
                     phase='normal' if normal else 'building')
 

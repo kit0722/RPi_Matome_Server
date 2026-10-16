@@ -215,6 +215,10 @@ let sitePrefsLoaded = false;
 let newCheckRunning = false;
 let newCheckTimer = null;
 let pendingFreshItems = null;
+let pendingFreshPreparation = null;
+let newBufferCommitInFlight = false;
+let newBufferSequence = 0;
+let latestNewCount = 0;
 const NEW_CHECK_MS = 5000;
 const MOBILE_RETURN_ITEMS_KEY = 'matomeReturnItems_v44';
 let loadToken = 0;
@@ -2060,48 +2064,58 @@ function applyPeerCommittedList(items, cutoff) {
   return true;
 }
 
+// Poll tiny state metadata; download the 500-800 titles only on tap or peer commit.
+async function fetchNewBufferState(){
+  let response=await fetch('/api/new-buffer-state',{cache:'no-store'});
+  if(response.status===404)response=await fetch('/api/preparation-status',{cache:'no-store'});
+  if(!response.ok)throw new Error('新着状態を取得できません');
+  const result=await response.json();
+  if(result?.ok===false)throw new Error('新着状態を確認できません');
+  return result;
+}
 async function checkForNewOnly(applyIfFound=false, syncPeerState=false) {
-  if (WORKER_MODE) return;
-  if (newCheckRunning) {
-    if(syncPeerState)setTimeout(()=>checkForNewOnly(false,true),250);
+  if(WORKER_MODE||newBufferCommitInFlight)return;
+  const sequence=newBufferSequence;
+  if(newCheckRunning){
+    if(syncPeerState)setTimeout(()=>{void checkForNewOnly(false,true)},250);
     return;
   }
-  newCheckRunning = true;
-  try {
-    // 新着バッジ用に取得した最新一覧を保持する。
-    // バッジを押した時は同じ一覧を即反映し、もう一度ネット取得しない。
-    const fresh = await fetchReadyList();
-    const freshCutoff=Number(fresh?.preparation?.new_buffer_cutoff||0);
+  newCheckRunning=true;
+  try{
+    const live=await fetchNewBufferState();
+    if(sequence!==newBufferSequence||newBufferCommitInFlight)return;
+    const freshCutoff=Number(live?.new_buffer_cutoff||0);
     const knownCutoff=storedServerBufferCutoff();
-    if(syncPeerState && freshCutoff>0 && (knownCutoff<=0 || freshCutoff>knownCutoff+0.5)){
-      // Another device may have consumed the shared new-buffer. Align only the
-      // committed 500 rows; articles newer than the cutoff remain behind the shared badge.
-      applyPeerCommittedList(fresh.items,freshCutoff);
-      rememberServerBufferCutoff(freshCutoff);
-    }else if(knownCutoff<=0 && freshCutoff>0){
+    if(syncPeerState&&freshCutoff>0&&(knownCutoff<=0||freshCutoff>knownCutoff+0.5)){
+      const fresh=await fetchReadyList();
+      if(sequence!==newBufferSequence||newBufferCommitInFlight)return;
+      if(applyPeerCommittedList(fresh.items,freshCutoff))
+        rememberServerBufferCutoff(freshCutoff);
+    }else if(knownCutoff<=0&&freshCutoff>0){
       rememberServerBufferCutoff(freshCutoff);
     }
-    if (!allItems.length && fresh.items.length) { applyFreshList(fresh.items); rememberServerBufferCutoff(freshCutoff); return; }
-    // v0.1.209: the red badge must use the server-side new-item buffer,
-    // not a second browser-side diff calculation. The latter could count all
-    // 500 current rows as new after a cache/version transition.
-    const count = Math.min(300, Math.max(0, Number(fresh?.preparation?.new_buffer || 0)));
-    pendingFreshItems = Array.isArray(fresh.items) ? fresh.items : null;
-    if (count > 0) {
-      if (applyIfFound) applyFreshList(fresh.items);
-      else showNewBadge(count);
-    } else {
-      pendingFreshItems = null;
-      // v0.1.81: background checks must not change the visible update time.
-      // "更新 HH:MM" means when the article list itself was actually replaced/rendered.
-      hideNewBadge(lastListDisplayTime());
+    if(!allItems.length){
+      const fresh=await fetchReadyList();
+      if(sequence!==newBufferSequence||newBufferCommitInFlight)return;
+      if(fresh?.items?.length){
+        applyFreshList(fresh.items);
+        rememberServerBufferCutoff(freshCutoff);
+      }
     }
-  } catch {
-    // チェック失敗でも枠を空欄にしない。直近の記事一覧更新時刻を表示する。
-    if (newBadge.dataset.mode !== "new") showUpdateBadge(lastListDisplayTime());
-  } finally {
-    newCheckRunning = false;
-  }
+    const count=Math.min(300,Math.max(0,Number(live?.new_buffer||0)));
+    pendingFreshItems=null;
+    pendingFreshPreparation=live;
+    latestNewCount=count;
+    if(count>0){
+      if(applyIfFound){
+        const fresh=await fetchReadyList();
+        if(sequence!==newBufferSequence||newBufferCommitInFlight)return;
+        applyFreshList(fresh.items);
+      }else showNewBadge(count);
+    }else hideNewBadge(lastListDisplayTime());
+  }catch{
+    if(newBadge.dataset.mode!=='new')showUpdateBadge(lastListDisplayTime());
+  }finally{newCheckRunning=false;}
 }
 
 function scheduleNewCheck() {
@@ -2449,14 +2463,26 @@ function loadExtraDisplaySettings(){
   applyReaderSettingFont(rf,false); applyReaderLineHeight(rl,false); applyReaderMetaFont(rm,false);
   for(const [input,key,cls] of [[settingsShowSiteCounts,SHOW_SITE_COUNTS_KEY,'setting-hide-site-counts'],[settingsShowStatus,SHOW_STATUS_KEY,'setting-hide-status'],[settingsShowIkioi,SHOW_IKIOI_KEY,'setting-hide-ikioi'],[settingsShowUpdate,SHOW_UPDATE_KEY,'setting-hide-update']]){ if(!input)continue; input.checked=readBoolSetting(key,true); applyBoolSetting(input,key,cls,false); }
 }
+function showStandbyInventory(data){
+  const field=document.getElementById('settingsStandbyInventory');
+  if(!field)return;
+  if(!data||data.ok!==true){
+    field.textContent='裏キャッシュの件数を取得できません';
+    return;
+  }
+  field.textContent='裏の完成記事 '+Math.max(0,Number(data.standby_ready||0))+
+    '件 ／ 保持 '+Math.max(0,Number(data.standby_held||0))+
+    '件 ／ 新着 '+Math.max(0,Number(data.new_buffer||0))+'件（5秒ごと最大2件補充）';
+}
 async function loadStandbySetting(){
   if(!settingsStandbyArticles)return;
   try{
     const r=await fetch('/api/standby-settings',{cache:'no-store'});
-    if(!r.ok)return;
+    if(!r.ok)throw new Error('unavailable');
     const d=await r.json();
     settingsStandbyArticles.value=String(Number(d?.standby_articles||1000));
-  }catch{}
+    showStandbyInventory(d);
+  }catch{showStandbyInventory(null);}
 }
 async function saveStandbySetting(value){
   if(!settingsStandbyArticles)return;
@@ -2469,6 +2495,7 @@ async function saveStandbySetting(value){
     if(!r.ok)throw new Error('待機記事設定を保存できません');
     const d=await r.json();
     settingsStandbyArticles.value=String(Number(d?.standby_articles||n));
+    void loadStandbySetting();
   }catch{
     await loadStandbySetting();
   }
@@ -2626,10 +2653,11 @@ async function releaseStandbyTick(){
     if(r.ok){
       const d=await r.json();
       delay=Math.max(5000,Math.min(30000,Number(d?.next_interval_seconds||5)*1000));
-      if(d?.released){
+      if(d?.released && !newBufferCommitInFlight){
         const count=Math.min(300,Math.max(0,Number(d?.new_buffer||0)));
         pendingFreshItems=null;
-        if(count>0)showNewBadge(count);
+        pendingFreshPreparation=null;
+        if(count>0){latestNewCount=count;showNewBadge(count);}
         void checkForNewOnly(false,true);
       }
     }
@@ -2642,35 +2670,66 @@ function startStandbyReleaseLoop(immediate=false){
   standbyReleaseTimer=setTimeout(releaseStandbyTick,immediate?250:5000);
 }
 
-async function consumeServerNewBuffer() {
-  try {
-    const res=await fetch('/api/consume-new-buffer',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
-    if(res.ok){const data=await res.json();rememberServerBufferCutoff(data?.new_buffer_cutoff);}
-  } catch {}
+async function consumeServerNewBuffer(through) {
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),17000);
+  try{
+    const response=await fetch('/api/consume-new-buffer',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(through>0?{through}:{}),
+      cache:'no-store',signal:controller.signal
+    });
+    if(!response.ok)throw new Error('Piが応答しません (HTTP '+response.status+')');
+    const result=await response.json();
+    if(result?.ok!==true)throw new Error('新着の確定に失敗しました');
+    const actual=Number(result.new_buffer_cutoff||0);
+    if(through>0 && actual+0.001<through)throw new Error('確認した新着がまだ確定されていません');
+    rememberServerBufferCutoff(actual);
+    return result;
+  }finally{clearTimeout(timeout);}
 }
 
-newBadge.addEventListener("click", async () => {
-  // v0.1.185: 新着が無い「更新 HH:MM」状態では、同じボタンで一覧先頭へ戻る。
-  // 新着あり状態の挙動は従来どおり、最新一覧を反映する。
-  if (newBadge.dataset.mode !== "new") {
-    forceLatestListTop();
-    return;
-  }
-  resetToLatestView();
-  // バッジを出した時点で取れている最新一覧を即反映。
-  if (pendingFreshItems?.length) {
-    const items=pendingFreshItems;
-    applyFreshList(items);
-    void consumeServerNewBuffer();
-    return;
-  }
-  // 通常はバッジ表示時点でpendingFreshItemsを保持済み。
-  // 万一消えていても全件手動更新はせず、新着確認だけを再実行する。
-  await checkForNewOnly(false);
-  if (pendingFreshItems?.length) {
-    const items=pendingFreshItems;
-    applyFreshList(items);
-    void consumeServerNewBuffer();
+let newBadgeTapRunning=false;
+newBadge.addEventListener('click',async()=>{
+  if(newBadgeTapRunning)return;
+  if(newBadge.dataset.mode!=='new'){forceLatestListTop();return;}
+  newBadgeTapRunning=true;
+  newBufferCommitInFlight=true;
+  ++newBufferSequence;
+  const beforeCount=Math.max(1,latestNewCount);
+  try{
+    newBadge.textContent='新着 '+beforeCount+'件を反映中…';
+    let meta=pendingFreshPreparation;
+    if(!meta)meta=await fetchNewBufferState();
+    const through=Number(meta?.latest_new_release_time||0);
+    const result=await consumeServerNewBuffer(through);
+    let confirmed=Array.isArray(result.items)&&result.items.length?result.items:null;
+    if(!confirmed?.length){
+      const fresh=await fetchReadyList();
+      confirmed=fresh.items;
+    }
+    // Another standby item can release *during* the acknowledgement. Keep
+    // these newer-than-cutoff rows behind the red new badge, not mixed into
+    // the already committed 500 before the next tap.
+    const commitCutoff=Number(result.new_buffer_cutoff||0);
+    const committed=commitCutoff>0?
+      confirmed.filter(item=>normalizePublicEpochMs(item?.ready_time||item?.timestamp||0)
+        <= commitCutoff*1000+1):[];
+    if(!applyFreshList(committed.length?committed:confirmed))
+      throw new Error('一覧を更新できません');
+    const left=Math.max(0,Number(result.new_buffer||0));
+    latestNewCount=left;
+    if(left>0)showNewBadge(left);
+    else hideNewBadge(lastListDisplayTime());
+  }catch(error){
+    newBadge.dataset.mode='new';
+    newBadge.classList.remove('update-state');
+    newBadge.textContent='新着 '+Math.max(1,latestNewCount)+'件・再試行';
+    newBadge.title='もう一度押すと再試行します：'+String(error?.message||error);
+  }finally{
+    newBadgeTapRunning=false;
+    newBufferCommitInFlight=false;
+    setTimeout(()=>{void checkForNewOnly(false,true)},350);
   }
 });
 

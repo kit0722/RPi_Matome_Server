@@ -106,9 +106,37 @@ MOBILE_IMAGE_GATE = threading.BoundedSemaphore(max(1,min(2,int(CFG.get("mobile_i
 UPSTREAM_GATE = threading.BoundedSemaphore(max(1,min(2,int(CFG.get("upstream_workers",2) or 2))))
 REFRESH = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cache-touch")
 MAINTENANCE = ThreadPoolExecutor(max_workers=1, thread_name_prefix="cache-maint")
+# Release waiting, fully prepared articles even while the reader page is open.
+# Browser timers alone pause under iOS WebKit suspension and were leaving the
+# new-buffer counter stalled until the user returned to the list.
+VIEWER_ACTIVITY_LOCK = threading.Lock()
+VIEWER_LAST_ACTIVITY = 0.0
+VIEWER_ACTIVE_SECONDS = 100.0
+
+def mark_viewer_active():
+    global VIEWER_LAST_ACTIVITY
+    with VIEWER_ACTIVITY_LOCK:
+        VIEWER_LAST_ACTIVITY = time.monotonic()
+
+def viewer_recently_active():
+    with VIEWER_ACTIVITY_LOCK:
+        return (VIEWER_LAST_ACTIVITY > 0 and
+                time.monotonic() - VIEWER_LAST_ACTIVITY < VIEWER_ACTIVE_SECONDS)
+
+def standby_release_pump(stop_event):
+    """Best-effort server-side 5s tick; does not touch existing article bodies."""
+    while not stop_event.wait(5):
+        if not viewer_recently_active():
+            continue
+        try:
+            READY.release_waiting()
+        except Exception as exc:
+            # Keep the daemon alive on transient SQLite writer contention.
+            print("standby release retry: " + str(exc)[:160], flush=True)
+
 LEGACY_CLEANUP_LOCK = threading.RLock()
 LEGACY_CLEANUP_STATE = {"running":False,"last_run":0.0,"result":{"removed":0,"freed_bytes":0}}
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.243"
+UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.244"
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])", re.I)
 FEED_HINT_RE = re.compile(r"(?:\.rdf(?:$|[?#])|/feed/?(?:$|[?#])|[?&](?:xml|feed)(?:=|&|$)|new-soku\.net/new\.php|2chub\.sekaiwatch\.jp|matomeant\.com|owata-net\.com|ikioi\.jp)", re.I)
 
@@ -720,7 +748,7 @@ def resolve_instagram_post(raw_url):
     return {'ok':False,'post_id':info['id'],'post_url':info['url'],'kind':info['kind'],'error':last_error}
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "RPiMatome/0.1.243"
+    server_version = "RPiMatome/0.1.244"
     protocol_version = "HTTP/1.1"
     def translate_path(self, path):
         # Static files are always under web/.
@@ -772,7 +800,9 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: since=0.0
             return self._json({"ok":True,**READY.shared_read_state(since)})
         if u.path == "/api/app-manifest":
-            items=READY.app_manifest()
+            q=urllib.parse.parse_qs(u.query)
+            scope=(q.get("scope") or ["published"])[0]
+            items=READY.app_manifest(scope=scope)
             total_bytes=sum(int(x.get('total_bytes') or 0) for x in items)
             return self._json({"ok":True,"api_version":1,"items":items,"checked_at":int(time.time()*1000),
                                "count":len(items),"total_bytes":total_bytes,"videos_cached":False})
@@ -790,13 +820,18 @@ class Handler(SimpleHTTPRequestHandler):
                 asset['mime']=mimetypes.guess_type(asset.get('path') or '')[0] or 'application/octet-stream'
             cc="private, max-age=86400, immutable" if requested_rev else "private, max-age=120"
             return self._json({"ok":True,"api_version":1,"article":article,"cache":cache_info},200,cc)
+        if u.path == "/api/new-buffer-state":
+            mark_viewer_active()
+            return self._json(READY.new_buffer_status())
         if u.path == "/api/ready-list":
+            mark_viewer_active()
             ready_items = READY.list_ready()
             # v0.1.210: old raw-HTML compatibility cache is no longer part of the
             # public list. Purge only obsolete article HTML; keep the committed 500, visible new 300, and hidden standby intact.
             cleanup = schedule_legacy_cleanup(ready_items)
             return self._json({"ok":True,"items":ready_items,"checked_at":int(time.time()*1000),"preparation":READY.initial_progress(),"legacy_cached":0,"legacy_cleanup":cleanup})
         if u.path == "/api/ready-article":
+            mark_viewer_active()
             url=(urllib.parse.parse_qs(u.query).get("url") or [""])[0]
             article=READY.article(url)
             mobile_image={
@@ -810,12 +845,19 @@ class Handler(SimpleHTTPRequestHandler):
             cc=("no-store" if stale_rev else "private, max-age=86400, immutable" if article and rev else "private, max-age=120" if article else "no-store")
             return self._json({"ok":bool(article),"article":article,"mobile_image":mobile_image},200 if article else 409,cc)
         if u.path == "/api/ready-lease":
+            mark_viewer_active()
             url=(urllib.parse.parse_qs(u.query).get("url") or [""])[0]
             return self._json({"ok":READY.lease(url)})
         if u.path == "/api/preparation-status": return self._json(READY.initial_progress())
         if u.path == "/api/standby-settings":
+            progress=READY.initial_progress()
             return self._json({"ok":True,"standby_articles":READY.standby_target(),
-                               "choices":list(STANDBY_CHOICES),"new_max":MAX_NEW_BUFFER})
+                               "choices":list(STANDBY_CHOICES),"new_max":MAX_NEW_BUFFER,
+                               "standby_ready":int(progress.get("standby_ready") or 0),
+                               "standby_held":int(progress.get("standby_held") or 0),
+                               "new_buffer":int(progress.get("new_buffer") or 0),
+                               "auto_release_seconds":5,
+                               "auto_release_batch":2})
         if u.path.startswith("/prepared/assets/"): return self.prepared_asset(u.path)
         if u.path == "/api/mobile-image": return self.mobile_image(u)
         if u.path == "/api/instagram-resolve":
@@ -834,7 +876,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: return self._json({"ok":False,"error":"bad name"},400)
             if data is None: return self._json({"ok":False,"error":"not found"},404)
             return self._json({"ok":True,"data":data})
-        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.243","build":243,"publication_mode":"ready-only","app_api":1})
+        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.244","build":244,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
         return super().do_GET()
     def do_HEAD(self):
         u=urllib.parse.urlparse(self.path)
@@ -850,10 +892,24 @@ class Handler(SimpleHTTPRequestHandler):
         try: data=json.loads(raw.decode("utf-8")) if raw else {}
         except Exception: data={}
         if u.path == "/api/consume-new-buffer":
-            return self._json({"ok":True,**READY.consume_new_buffer()})
+            mark_viewer_active()
+            through=data.get("through") if isinstance(data,dict) else None
+            acknowledged=READY.consume_new_buffer(through=through)
+            # Return the authoritative freshly committed list in the same POST
+            # response. The iPhone must not have to read a stale GET cache and
+            # must never hide the badge before the acknowledgement arrives.
+            items=READY.list_ready()
+            progress=READY.initial_progress()
+            result={"ok":True,**acknowledged,"items":items,"preparation":progress,
+                    "checked_at":int(time.time()*1000)}
+            # Retention scans and asset cleanup must not block the button.
+            MAINTENANCE.submit(READY.maintain)
+            return self._json(result)
         if u.path == "/api/release-standby":
+            mark_viewer_active()
             return self._json({"ok":True,**READY.release_waiting()})
         if u.path == "/api/ready-lease-batch":
+            mark_viewer_active()
             urls=data.get("urls") if isinstance(data.get("urls"),list) else []
             return self._json({"ok":True,**READY.lease_many(urls)})
         if u.path == "/api/standby-settings":
@@ -1086,10 +1142,17 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--host",default="0.0.0.0"); ap.add_argument("--port",type=int,default=int(CFG["port"])); args=ap.parse_args()
     httpd=ThreadingHTTPServer((args.host,args.port),Handler)
-    print(f"RPi Matome Server v0.1.243  http://{args.host}:{args.port}/")
+    print(f"RPi Matome Server v0.1.244  http://{args.host}:{args.port}/")
     print(f"cache: text {CFG['text_retention_days']}d / image {CFG['image_retention_days']}d / max {CFG['max_cache_gb']}GB")
+    stop_release=threading.Event()
+    release_thread=threading.Thread(target=standby_release_pump, args=(stop_release,),
+                                    name="standby-release-5s", daemon=True)
+    release_thread.start()
     try: httpd.serve_forever()
     except KeyboardInterrupt: pass
-    finally: httpd.server_close()
+    finally:
+        stop_release.set()
+        release_thread.join(timeout=2)
+        httpd.server_close()
 
 if __name__ == "__main__": main()
