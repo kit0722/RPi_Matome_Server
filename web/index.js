@@ -1719,7 +1719,6 @@ function render(force=false, {preserveReader=false} = {}) {
         openArticle(item, {navigate:true});
         return;
       }
-      if (!(await ensureReadyArticleAvailable(item))) return;
       markRowRead();
       openArticle(item, {navigate:false});
       // v0.1.217: on desktop, explicit article clicks are marked read before the
@@ -2065,11 +2064,35 @@ function applyPeerCommittedList(items, cutoff) {
 }
 
 // Poll tiny state metadata; download the 500-800 titles only on tap or peer commit.
+// Bound the entire JSON read, including response-body delivery. iOS may
+// suspend an outstanding fetch across device lock; never hold UI guards forever.
+const liveRequests = new Set();
+async function fetchLiveJSON(url, options={}, timeout=12000) {
+  const controller=new AbortController();
+  liveRequests.add(controller);
+  let timer;
+  try {
+    return await Promise.race([
+      (async()=>{
+        const response=await fetch(url,{...options,cache:'no-store',signal:controller.signal});
+        if(!response.ok){const error=new Error('HTTP '+response.status);error.status=response.status;throw error;}
+        return await response.json();
+      })(),
+      new Promise((_,reject)=>{
+        controller.signal.addEventListener('abort',()=>reject(new Error('通信を再試行してください')),{once:true});
+        timer=setTimeout(()=>controller.abort(),timeout);
+      })
+    ]);
+  } finally {clearTimeout(timer);liveRequests.delete(controller);}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)for(const controller of liveRequests)controller.abort();
+});
+
 async function fetchNewBufferState(){
-  let response=await fetch('/api/new-buffer-state',{cache:'no-store'});
-  if(response.status===404)response=await fetch('/api/preparation-status',{cache:'no-store'});
-  if(!response.ok)throw new Error('新着状態を取得できません');
-  const result=await response.json();
+  let result;
+  try {result=await fetchLiveJSON('/api/new-buffer-state');}
+  catch(error){if(error.status!==404)throw error;result=await fetchLiveJSON('/api/preparation-status');}
   if(result?.ok===false)throw new Error('新着状態を確認できません');
   return result;
 }
@@ -2124,9 +2147,7 @@ function scheduleNewCheck() {
 }
 
 async function fetchReadyList() {
-  const response=await fetch('/api/ready-list',{cache:'no-store'});
-  if (!response.ok) throw new Error('完成一覧を取得できません');
-  const result=await response.json();
+  const result=await fetchLiveJSON('/api/ready-list');
   result.items=keepAllowedMatomeItems(result.items||[]).filter(x=>x.link).map(normalizeReadyListTime).sort((a,b)=>{
     const ar=a.ready?1:0, br=b.ready?1:0;
     if (ar!==br) return br-ar;
@@ -2649,9 +2670,8 @@ async function releaseStandbyTick(){
   }
   let delay=5000;
   try{
-    const r=await fetch('/api/release-standby',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',cache:'no-store'});
-    if(r.ok){
-      const d=await r.json();
+    const d=await fetchLiveJSON('/api/release-standby',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    if(d?.ok!==false){
       delay=Math.max(5000,Math.min(30000,Number(d?.next_interval_seconds||5)*1000));
       if(d?.released && !newBufferCommitInFlight){
         const count=Math.min(300,Math.max(0,Number(d?.new_buffer||0)));
@@ -2671,22 +2691,15 @@ function startStandbyReleaseLoop(immediate=false){
 }
 
 async function consumeServerNewBuffer(through) {
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),17000);
-  try{
-    const response=await fetch('/api/consume-new-buffer',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(through>0?{through}:{}),
-      cache:'no-store',signal:controller.signal
-    });
-    if(!response.ok)throw new Error('Piが応答しません (HTTP '+response.status+')');
-    const result=await response.json();
-    if(result?.ok!==true)throw new Error('新着の確定に失敗しました');
-    const actual=Number(result.new_buffer_cutoff||0);
-    if(through>0 && actual+0.001<through)throw new Error('確認した新着がまだ確定されていません');
-    rememberServerBufferCutoff(actual);
-    return result;
-  }finally{clearTimeout(timeout);}
+  const result=await fetchLiveJSON('/api/consume-new-buffer',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(through>0?{through}:{})
+  },17000);
+  if(result?.ok!==true)throw new Error('新着の確定に失敗しました');
+  const actual=Number(result.new_buffer_cutoff||0);
+  if(through>0 && actual+0.001<through)throw new Error('確認した新着がまだ確定されていません');
+  rememberServerBufferCutoff(actual);
+  return result;
 }
 
 let newBadgeTapRunning=false;

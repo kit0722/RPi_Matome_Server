@@ -1928,26 +1928,46 @@ function normalize2chCopipeDisplay(root, pageUrl=''){
 }
 
 /* Viewing only attaches light interactions; extraction and media analysis are already finished. */
+// Bound the entire JSON read, including response-body delivery. iOS may
+// suspend an outstanding fetch across device lock; never hold UI guards forever.
+const liveRequests = new Set();
+async function fetchLiveJSON(url, options={}, timeout=12000) {
+  const controller=new AbortController();
+  liveRequests.add(controller);
+  let timer;
+  try {
+    return await Promise.race([
+      (async()=>{
+        const response=await fetch(url,{...options,cache:'no-store',signal:controller.signal});
+        if(!response.ok){const error=new Error('HTTP '+response.status);error.status=response.status;throw error;}
+        return await response.json();
+      })(),
+      new Promise((_,reject)=>{
+        controller.signal.addEventListener('abort',()=>reject(new Error('通信を再試行してください')),{once:true});
+        timer=setTimeout(()=>controller.abort(),timeout);
+      })
+    ]);
+  } finally {clearTimeout(timer);liveRequests.delete(controller);}
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)for(const controller of liveRequests)controller.abort();
+});
+
 async function fetchPreparedArticleWithRetry(api) {
   let lastError=null;
   for(let attempt=0;attempt<2;attempt++){
     if(attempt){
-      try{await fetch('/api/ready-lease?url='+encodeURIComponent(requestedUrl),{cache:'no-store'});}catch{}
+      // Lease renewal is best effort. Never await an unbounded request before retry.
+      void fetchLiveJSON('/api/ready-lease?url='+encodeURIComponent(requestedUrl),{},3000).catch(()=>{});
       await new Promise(resolve=>setTimeout(resolve,120));
     }
-    const controller=new AbortController();
-    const timer=setTimeout(()=>controller.abort(),7000);
     try{
-      // The article revision already makes the URL unique. Avoid force-cache here:
-      // a transient WebKit/cache stall must not strand the reader on "読み込み中".
-      const res=await fetch(api,{cache:'no-store',signal:controller.signal});
-      const data=await res.json().catch(()=>null);
-      if(res.ok && data?.article)return data;
-      lastError=new Error('ready article unavailable: '+res.status);
+      const data=await fetchLiveJSON(api,{},7000);
+      if(data?.article)return data;
+      lastError=new Error('この記事の本文を取得できません');
     }catch(e){lastError=e;}
-    finally{clearTimeout(timer);}
   }
-  throw lastError || new Error('この記事は準備中、または完成キャッシュの再構築中です。一覧を更新してください。');
+  throw lastError || new Error('通信が復帰してから再試行してください。');
 }
 
 async function loadPreparedArticle() {
@@ -2305,6 +2325,10 @@ contentEl.addEventListener('click', e=>{
 loadPreparedArticle().catch(e=>{
   loadingEl.hidden=true;errorEl.hidden=false;errorEl.textContent=String(e.message||e);
   originalLink.href=requestedUrl || '#';
+  const retry=document.createElement('button');
+  retry.type='button';retry.textContent='記事を再読み込み';
+  retry.addEventListener('click',()=>location.reload());
+  errorEl.append(document.createElement('br'),retry);
 });
 
 
