@@ -15,3 +15,5 @@
     curl -fsS http://127.0.0.1:8767/api/standby-settings
 
 Note: after installation, wait for new unique candidates to complete while the viewer is inactive to grow hidden stock. If candidate_pending/retry_due/preparing all stay zero, the source discovery pool (not the release timer) limits inventory.
+
+2026-10-17 corrective update: ensure final mobile reader-font-step selector contains display:inline-flex !important. Reader CSS query cache-busted to 0303, matching HTML, UPDATE_ONLY.sh, and preflight tests. No cached article/config changes.
