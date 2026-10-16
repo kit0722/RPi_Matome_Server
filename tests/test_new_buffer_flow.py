@@ -160,8 +160,8 @@ class NewBufferFlowTests(unittest.TestCase):
         self.seed("base", 1000, 1500)
         self.seed("new", 1500, 1800)
         result = self.store.release_waiting()
-        self.assertEqual(result["slid_count"], 100)
-        self.assertEqual(result["new_buffer"], 200)
+        self.assertEqual(result["slid_count"], 0)
+        self.assertEqual(result["new_buffer"], 300)
         self.assertLessEqual(result["new_buffer"], MAX_NEW_BUFFER)
 
 

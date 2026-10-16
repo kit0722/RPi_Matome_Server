@@ -1156,13 +1156,26 @@ class ReadyStore:
 
 
     def _slide_full_new_buffer(self, c):
-        """On 300 new articles, promote the oldest 100 into the rolling 500.
+        """Promote 100 of 300 new articles only when ready standby is full.
 
         Updating the shared cutoff in the caller's transaction preserves read
         history; maintain() retires old bodies only after view leases expire.
         """
         cutoff = self._buffer_cutoff(c)
         if cutoff is None:
+            return 0
+        # Use this transaction's configured target and immediately publishable
+        # hidden stock. Retrying/preparing bodies are not available inventory.
+        target_row = c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
+        try:
+            target = self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
+        except (ValueError, TypeError):
+            target = DEFAULT_STANDBY
+        standby = int(c.execute("""SELECT COUNT(*) FROM articles
+          WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+            AND release_time<=0 AND state='ready'""",
+          (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
+        if standby < target:
             return 0
         moved = 0
         while True:

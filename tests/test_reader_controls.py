@@ -25,8 +25,8 @@ class ReaderFontControlsTests(unittest.TestCase):
 
     def test_latest_matches_served_api_and_update_script(self):
         latest=json.loads((ROOT/"latest.json").read_text(encoding="utf-8"))
-        self.assertEqual(latest["version"],"0.1.249")
-        self.assertEqual(latest["build"],249)
+        self.assertEqual(latest["version"],"0.1.250")
+        self.assertEqual(latest["build"],250)
         script=(ROOT/"UPDATE_ONLY.sh").read_text(encoding="utf-8")
         self.assertIn('reader.css?v=0303',script)
 
