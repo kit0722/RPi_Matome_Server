@@ -130,6 +130,32 @@ class NewBufferFlowTests(unittest.TestCase):
         self.assertEqual(self.store.initial_progress()["new_buffer"], 19)
         self.assertEqual(self.store.standby_count(), 20)
 
+    def test_1000_ready_standby_is_a_distinct_stock_target(self):
+        self.seed("base", 1000, 1500)
+        self.seed("hidden", 3000, 4000, hidden=True)
+        self.assertEqual(self.store.standby_target(), 1000)
+        self.assertEqual(self.store.initial_progress()["standby_ready"], 1000)
+        self.assertEqual(self.store.new_buffer_status()["standby_ready"], 1000)
+        self.assertEqual(self.store.new_buffer_status()["new_buffer"], 0)
+        released=self.store.release_waiting()
+        self.assertEqual(released["released_count"], 2)
+        self.assertEqual(self.store.initial_progress()["standby_ready"], 998)
+        self.assertEqual(self.store.release_waiting()["released_count"], 0)
+
+    def test_only_server_controller_drains_stock(self):
+        # The old prepare_worker auto-release loop drained the hidden stock
+        # even when nobody was viewing. The server is now the sole release
+        # owner and must gate its five-second timer on viewer activity.
+        from pathlib import Path
+        root=Path(__file__).resolve().parents[1]
+        worker=(root/"prepare_worker.py").read_text(encoding="utf-8")
+        server=(root/"server.py").read_text(encoding="utf-8")
+        self.assertNotIn("def _auto_release_standby(",worker)
+        self.assertNotIn("name='standby-auto-release'",worker)
+        self.assertIn("def standby_release_pump(stop_event):",server)
+        self.assertIn("if not viewer_recently_active():",server)
+        self.assertIn("READY.release_waiting()",server)
+
     def test_full_buffer_slide_still_keeps_300_max(self):
         self.seed("base", 1000, 1500)
         self.seed("new", 1500, 1800)

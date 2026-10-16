@@ -928,18 +928,6 @@ def _prepare_claimed_job(browser, job):
     queue_mobile_variants(snapshot.get('assets') or [])
 
 
-def _auto_release_standby():
-    """Publish hidden ready articles even when the viewer is closed."""
-    while True:
-        try:
-            result=STORE.release_waiting()
-            if result.get('slid_count'):
-                maintain_completed()
-        except Exception as e:
-            print('待機記事の自動繰り上げ:',str(e),flush=True)
-        time.sleep(5)
-
-
 def run():
     def _graceful_stop(signum, frame):
         _selenium_log('SELENIUM_END',article='worker-shutdown',operation='signal',signal=int(signum),active=SELENIUM_ACTIVE_COUNT)
@@ -959,7 +947,9 @@ def run():
         items=[x for x in saved['items'] if isinstance(x,dict) and (not allowed_sources or x.get('source') in allowed_sources)]
         STORE.discover(items,authoritative=False)
     STORE.filter_unpublished_sources(allowed_sources)
-    threading.Thread(target=_auto_release_standby,daemon=True,name='standby-auto-release').start()
+    # Standby release has exactly one owner: server.standby_release_pump.
+    # Never drain hidden stock when there is no viewer; this worker's job is
+    # to build the configured reserve (default 1000 completed articles).
     httpd=ThreadingHTTPServer(('127.0.0.1',0),PreparationHandler)
     threading.Thread(target=httpd.serve_forever,daemon=True,name='prepare-local').start()
     origin='http://127.0.0.1:'+str(httpd.server_port)
