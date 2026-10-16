@@ -64,6 +64,9 @@ class AutoSlideTests(unittest.TestCase):
         self.assertFalse(result["released"])
         self.assertEqual(result["slid_count"], 0)
         self.assertEqual(self.counts()[0], 300)
+        state=self.store.new_buffer_status()
+        self.assertTrue(state['auto_slide_waiting_for_standby'])
+        self.assertFalse(state['auto_slide_eligible'])
 
     def test_partial_stock_waits_until_current_target_is_full(self):
         self.seed("base", 1000, 1500)

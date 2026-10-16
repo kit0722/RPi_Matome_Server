@@ -32,6 +32,10 @@ async function verify(path){
   };
   assert.equal((await context.request('/resume')).new_buffer,2);
   assert.equal(context.pending.size,0);
+  if(path.endsWith('index.js')){
+    context.fetch=async()=>({ok:true,headers:{get:()=> '1'},json:async()=>({ok:true,items:[]})});
+    assert.equal((await context.request('/api/ready-list'))._offlineSnapshot,true);
+  }
   context.fetch=async()=>({ok:false,status:404});
   await assert.rejects(context.request('/missing'),error=>error.status===404);
   assert.equal(context.pending.size,0);

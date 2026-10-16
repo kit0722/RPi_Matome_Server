@@ -340,8 +340,7 @@ async function flushSharedReadWrites(extraUrls=[]) {
   if(readServerFlushPromise)return readServerFlushPromise;
   readServerFlushPromise=(async()=>{
     try{
-      const res=await fetch('/api/read-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls:pending}),cache:'no-store'});
-      if(!res.ok)throw new Error('read sync failed');
+      await fetchLiveJSON('/api/read-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls:pending})});
       const current=new Set(readServerPending());
       for(const u of pending)current.delete(u);
       writeReadServerPending([...current]);
@@ -373,9 +372,7 @@ function syncSharedReads({rerender=false}={}) {
     if(since<=0) await flushSharedReadWrites([...sharedReadSet]);
     else await flushSharedReadWrites();
     try{
-      const res=await fetch('/api/read-state?since='+encodeURIComponent(String(since)),{cache:'no-store'});
-      if(!res.ok)throw new Error('read state unavailable');
-      const data=await res.json();
+      const data=await fetchLiveJSON('/api/read-state?since='+encodeURIComponent(String(since)));
       let changed=false;
       for(const url of (Array.isArray(data.urls)?data.urls:[])){
         if(typeof url!=='string'||!url)continue;
@@ -2076,7 +2073,10 @@ async function fetchLiveJSON(url, options={}, timeout=12000) {
       (async()=>{
         const response=await fetch(url,{...options,cache:'no-store',signal:controller.signal});
         if(!response.ok){const error=new Error('HTTP '+response.status);error.status=response.status;throw error;}
-        return await response.json();
+        const data=await response.json();
+        if(url==='/api/ready-list' && data && typeof data==='object')
+          data._offlineSnapshot=data._offlineSnapshot===true || response.headers?.get('X-Matome-Offline-List')==='1';
+        return data;
       })(),
       new Promise((_,reject)=>{
         controller.signal.addEventListener('abort',()=>reject(new Error('通信を再試行してください')),{once:true});
@@ -2148,6 +2148,7 @@ function scheduleNewCheck() {
 
 async function fetchReadyList() {
   const result=await fetchLiveJSON('/api/ready-list');
+  const fromOfflineSnapshot=result._offlineSnapshot===true;
   result.items=keepAllowedMatomeItems(result.items||[]).filter(x=>x.link).map(normalizeReadyListTime).sort((a,b)=>{
     const ar=a.ready?1:0, br=b.ready?1:0;
     if (ar!==br) return br-ar;
@@ -2191,8 +2192,8 @@ function prefetchOneMobileReady(item){
   const key=mobileReadyCacheKey(url,rev);if(mobileReadyPending.has(key))return mobileReadyPending.get(key);
   try{if(sessionStorage.getItem(key))return Promise.resolve(true);}catch{}
   const api='/api/ready-article?url='+encodeURIComponent(url)+(rev?'&rev='+encodeURIComponent(rev):'');
-  const p=fetch(api,{cache:rev?'force-cache':'no-store'})
-    .then(async r=>{if(!r.ok)return false;const text=await r.text();rememberMobileReadyCache(url,rev,text);return true;})
+  const p=fetchLiveJSON(api)
+    .then(data=>{if(!data?.article)return false;rememberMobileReadyCache(url,rev,JSON.stringify(data));return true;})
     .catch(()=>false).finally(()=>mobileReadyPending.delete(key));
   mobileReadyPending.set(key,p);return p;
 }
@@ -2216,12 +2217,9 @@ async function renewFrozenListLeases(items=allItems, force=false){
   frozenLeaseLastAt=now;
   frozenLeasePending=(async()=>{
     try{
-      const r=await fetch('/api/ready-lease-batch',{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({urls}),cache:'no-store'
+      return await fetchLiveJSON('/api/ready-lease-batch',{
+        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({urls})
       });
-      if(!r.ok)return null;
-      return await r.json();
     }catch{return null;}
     finally{frozenLeasePending=null;}
   })();

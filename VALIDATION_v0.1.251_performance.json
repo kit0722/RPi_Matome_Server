@@ -1,0 +1,55 @@
+{
+  "scope": "local synthetic DB; not Pi/HTTP/network/device performance",
+  "fixture": {
+    "committed": 500,
+    "new": 300,
+    "hidden": 1000,
+    "old_metadata": 20000
+  },
+  "baseline": {
+    "new_state": {
+      "median_ms": 1.734,
+      "p95_ms": 3.079,
+      "samples": 30
+    },
+    "ready_list": {
+      "median_ms": 18.909,
+      "p95_ms": 233.619,
+      "samples": 30
+    },
+    "prepared_body": {
+      "median_ms": 0.589,
+      "p95_ms": 1.262,
+      "samples": 30
+    },
+    "progress": {
+      "median_ms": 9.974,
+      "p95_ms": 113.088,
+      "samples": 30
+    },
+    "ready_list_during_800ms_writer_ms": 912.363
+  },
+  "current": {
+    "new_state": {
+      "median_ms": 1.53,
+      "p95_ms": 2.086,
+      "samples": 30
+    },
+    "ready_list": {
+      "median_ms": 13.655,
+      "p95_ms": 17.547,
+      "samples": 30
+    },
+    "prepared_body": {
+      "median_ms": 0.491,
+      "p95_ms": 0.966,
+      "samples": 30
+    },
+    "progress": {
+      "median_ms": 8.06,
+      "p95_ms": 11.827,
+      "samples": 30
+    },
+    "ready_list_during_800ms_writer_ms": 23.461
+  }
+}

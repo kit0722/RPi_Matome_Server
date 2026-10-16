@@ -193,6 +193,11 @@ class ReadyStore:
                 c.execute("""UPDATE articles SET release_time=COALESCE(ready_time,0)
                              WHERE body_file IS NOT NULL AND ready_time IS NOT NULL""")
                 release_added = True
+            c.execute('CREATE INDEX IF NOT EXISTS articles_release_order ON articles(release_time DESC,url)')
+            c.execute("""CREATE INDEX IF NOT EXISTS articles_standby_ready
+              ON articles(source_time DESC,ready_time DESC,url)
+              WHERE state='ready' AND release_time<=0
+                AND body_file IS NOT NULL AND ready_time IS NOT NULL""")
             # v0.1.235: release_time is seconds everywhere. v0.1.234 standby
             # releases accidentally stored milliseconds; normalize any rows/cutoff
             # produced by that build before publication ordering is evaluated.
@@ -468,12 +473,17 @@ class ReadyStore:
     def discover(self, items, authoritative=True):
         clean = {}
         for item in items:
+            if not isinstance(item,dict):
+                continue
             url = str(item.get('link') or '')
             if not re.match(r'^https?://', url):
                 continue
             # Input timestamps and public timestamps are milliseconds since Unix epoch.
-            source_time = float(item.get('source_time') or item.get('timestamp') or 0)
-            if source_time != source_time or source_time < 0:
+            try:
+                source_time = float(item.get('source_time') or item.get('timestamp') or 0)
+            except (ValueError,TypeError,OverflowError):
+                source_time = 0
+            if not (0 <= source_time < float('inf')):
                 source_time = 0
             clean[url] = (dict(item, source_time=source_time), source_time)
         discovery_limit=min(MAX_DISCOVERY,MAX_BODY_CACHE+MAX_NEW_BUFFER+self.standby_target())
@@ -542,7 +552,8 @@ class ReadyStore:
             if authoritative and active_urls:
                 placeholders=','.join('?' for _ in active_urls)
                 c.execute(f"UPDATE articles SET state='evicted',error='最新待機枠の対象外' "
-                          f"WHERE state IN ('pending','retry','failed') AND url NOT IN ({placeholders})", active_urls)
+                          f"WHERE state IN ('pending','retry','failed') "
+                          f"AND (body_file IS NULL OR ready_time IS NULL) AND url NOT IN ({placeholders})", active_urls)
                 c.execute("DELETE FROM asset_claims WHERE article IN (SELECT url FROM articles WHERE state='evicted')")
         self.set_status('last_discovery', int(time.time()*1000))
         return len(latest)
@@ -1224,6 +1235,7 @@ class ReadyStore:
     def new_buffer_status(self):
         """Small read-only 5-second poll; avoids sending 500-800 article rows."""
         with self.connect() as c:
+            c.execute('BEGIN')
             raw_cutoff=self._buffer_cutoff(c)
             cutoff=float(raw_cutoff or 0)
             # A fresh server has no committed 500-item cutoff yet. Treat its
@@ -1243,12 +1255,20 @@ class ReadyStore:
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time<=0 AND state='ready'""",
                 (VIEW_SCHEMA_MIN,)).fetchone()
+            target_row=c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
+            try:target=self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
+            except (ValueError,TypeError):target=DEFAULT_STANDBY
+        standby=int(ready['n'] or 0)
         return {
             'ok':True,
             'new_buffer':min(MAX_NEW_BUFFER,count),
             'new_buffer_cutoff':cutoff,
             'latest_new_release_time':latest,
-            'standby_ready':int(ready['n'] or 0)
+            'standby_ready':standby,
+            'standby_target':target,
+            'standby_full':standby>=target,
+            'auto_slide_eligible':count>=MAX_NEW_BUFFER and standby>=target,
+            'auto_slide_waiting_for_standby':count>=MAX_NEW_BUFFER and standby<target,
         }
 
     def release_waiting(self):
@@ -1314,9 +1334,9 @@ class ReadyStore:
         try:
             bound=float(through) if through is not None else None
             if bound is not None and (not (0 < bound < 10**12)):
-                bound=None
+                raise ValueError('invalid through timestamp')
         except (TypeError,ValueError,OverflowError):
-            bound=None
+            raise ValueError('invalid through timestamp') from None
         with self.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             old=self._buffer_cutoff(c)
@@ -1358,6 +1378,7 @@ class ReadyStore:
 
     def list_ready(self):
         with self.connect() as c:
+            c.execute('BEGIN')
             cutoff=self._buffer_cutoff(c)
             if cutoff is None:
                 rows=c.execute("""SELECT * FROM articles
@@ -1378,17 +1399,12 @@ class ReadyStore:
             # v0.1.209: any article handed to the visible list gets a short lease.
             # This closes the race where maintain() could retire/remove a body after
             # /api/ready-list returned it but before the user clicked it.
-            visible_urls=[str(r['url']) for r in rows if r['url']]
-            if visible_urls:
-                now=time.time();lease_until=now+600;renew_before=now+300
-                # Do not issue up to 1000 UPDATE statements on every list poll. Renew only
-                # rows with less than half of the 10-minute safety lease remaining, in
-                # small batches that stay below old SQLite variable limits.
-                for off in range(0,len(visible_urls),400):
-                    chunk=visible_urls[off:off+400]
-                    marks=','.join('?' for _ in chunk)
-                    c.execute(f'UPDATE articles SET view_until=? WHERE view_until<? AND url IN ({marks})',
-                              [lease_until,renew_before,*chunk])
+            renew_before=time.time()+300
+            visible_urls=[str(r['url']) for r in rows if r['url'] and float(r['view_until'] or 0)<renew_before]
+        # A read-only WAL snapshot must not be upgraded into a writer: that
+        # fails with SQLITE_BUSY_SNAPSHOT during preparation/maintenance. Lease
+        # renewal is best effort and cannot hold article-list responses for 15s.
+        self._renew_list_leases(visible_urls)
         items=[]
         for row in rows:
             if not (self.bodies / row['body_file']).is_file():
@@ -1406,6 +1422,24 @@ class ReadyStore:
             items.append(item)
         return items
 
+    def _renew_list_leases(self, urls):
+        if not urls:return
+        c=None
+        try:
+            c=sqlite3.connect(self.db,timeout=0.05)
+            c.execute('PRAGMA synchronous=NORMAL')
+            now=time.time()
+            with c:
+                for off in range(0,len(urls),400):
+                    chunk=urls[off:off+400]
+                    marks=','.join('?' for _ in chunk)
+                    c.execute(f'UPDATE articles SET view_until=? WHERE view_until<? AND url IN ({marks})',
+                              [now+600,now+300,*chunk])
+        except sqlite3.OperationalError:
+            pass
+        finally:
+            if c is not None:c.close()
+
     def app_manifest(self, scope='published'):
         """Return ready articles in priority order, including hidden standby if requested.
 
@@ -1417,6 +1451,7 @@ class ReadyStore:
         """
         include_hidden = scope == 'all'
         with self.connect() as c:
+            c.execute('BEGIN')
             cutoff = self._buffer_cutoff(c)
             target_row = c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
             try:
@@ -2014,6 +2049,7 @@ class ReadyStore:
         # and could mix counts from slightly different moments.
         now=time.time()
         with self.connect() as c:
+            c.execute('BEGIN')
             status={}
             for r in c.execute('SELECT key,value FROM status'):
                 try: status[r['key']]=json.loads(r['value'])

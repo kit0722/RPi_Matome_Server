@@ -136,7 +136,7 @@ def standby_release_pump(stop_event):
 
 LEGACY_CLEANUP_LOCK = threading.RLock()
 LEGACY_CLEANUP_STATE = {"running":False,"last_run":0.0,"result":{"removed":0,"freed_bytes":0}}
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.250"
+UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.251"
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])", re.I)
 FEED_HINT_RE = re.compile(r"(?:\.rdf(?:$|[?#])|/feed/?(?:$|[?#])|[?&](?:xml|feed)(?:=|&|$)|new-soku\.net/new\.php|2chub\.sekaiwatch\.jp|matomeant\.com|owata-net\.com|ikioi\.jp)", re.I)
 
@@ -748,7 +748,7 @@ def resolve_instagram_post(raw_url):
     return {'ok':False,'post_id':info['id'],'post_url':info['url'],'kind':info['kind'],'error':last_error}
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "RPiMatome/0.1.250"
+    server_version = "RPiMatome/0.1.251"
     protocol_version = "HTTP/1.1"
     def translate_path(self, path):
         # Static files are always under web/.
@@ -910,7 +910,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: return self._json({"ok":False,"error":"bad name"},400)
             if data is None: return self._json({"ok":False,"error":"not found"},404)
             return self._json({"ok":True,"data":data})
-        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.250","build":250,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"standby_release_owner":"viewer_server_only","new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
+        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.251","build":251,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"standby_release_owner":"viewer_server_only","new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
         return super().do_GET()
     def do_HEAD(self):
         u=urllib.parse.urlparse(self.path)
@@ -921,14 +921,23 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         u=urllib.parse.urlparse(self.path)
-        n=int(self.headers.get("Content-Length") or 0)
-        raw=self.rfile.read(min(n, 2_000_000)) if n else b""
-        try: data=json.loads(raw.decode("utf-8")) if raw else {}
-        except Exception: data={}
+        try:n=int(self.headers.get("Content-Length") or 0)
+        except (ValueError,OverflowError):n=-1
+        if n<0 or n>2_000_000:
+            self.close_connection=True
+            return self._json({"ok":False,"error":"invalid request length"},413 if n>2_000_000 else 400)
+        raw=self.rfile.read(n) if n else b""
+        try:
+            data=json.loads(raw.decode("utf-8")) if raw else {}
+            if not isinstance(data,dict):raise ValueError('JSON object required')
+        except (ValueError,UnicodeError):
+            return self._json({"ok":False,"error":"JSON object required"},400)
         if u.path == "/api/consume-new-buffer":
             mark_viewer_active()
             through=data.get("through") if isinstance(data,dict) else None
-            acknowledged=READY.consume_new_buffer(through=through)
+            try:acknowledged=READY.consume_new_buffer(through=through)
+            except ValueError:
+                return self._json({"ok":False,"error":"invalid through timestamp"},400)
             # Return the authoritative freshly committed list in the same POST
             # response. The iPhone must not have to read a stale GET cache and
             # must never hide the badge before the acknowledgement arrives.
@@ -937,7 +946,7 @@ class Handler(SimpleHTTPRequestHandler):
             result={"ok":True,**acknowledged,"items":items,"preparation":progress,
                     "checked_at":int(time.time()*1000)}
             # Retention scans and asset cleanup must not block the button.
-            MAINTENANCE.submit(READY.maintain)
+            MAINTENANCE.submit(READY.maintain_if_due)
             return self._json(result)
         if u.path == "/api/release-standby":
             mark_viewer_active()
@@ -1176,7 +1185,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--host",default="0.0.0.0"); ap.add_argument("--port",type=int,default=int(CFG["port"])); args=ap.parse_args()
     httpd=ThreadingHTTPServer((args.host,args.port),Handler)
-    print(f"RPi Matome Server v0.1.250  http://{args.host}:{args.port}/")
+    print(f"RPi Matome Server v0.1.251  http://{args.host}:{args.port}/")
     print(f"cache: text {CFG['text_retention_days']}d / image {CFG['image_retention_days']}d / max {CFG['max_cache_gb']}GB")
     stop_release=threading.Event()
     release_thread=threading.Thread(target=standby_release_pump, args=(stop_release,),
