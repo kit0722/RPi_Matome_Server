@@ -1091,18 +1091,14 @@ class ReadyStore:
             elif marker is None:
                 release_time=publish_time/1000.0
             else:
-                # v0.1.232: while standby is still being built, do not make genuinely
-                # current articles wait behind the hidden queue. Fresh source articles
-                # publish immediately (up to the visible-new cap); older catch-up work
-                # is kept hidden and becomes the standby stock.
-                visible_now=int(c.execute("""SELECT COUNT(*) FROM articles
-                  WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                    AND release_time>? AND state IN ('ready','retry','preparing')""",
-                    (VIEW_SCHEMA_MIN,marker)).fetchone()[0] or 0)
-                source_time=float(previous['source_time'] or 0)
-                source_age=max(0.0,now-source_time) if source_time>0 else 10**12
-                live_arrival=source_age<=20*60*1000
-                release_time=publish_time/1000.0 if live_arrival and visible_now<MAX_NEW_BUFFER else 0
+                # v0.1.248: a completed article always enters the hidden standby
+                # stock after the initial committed 500. The old special case
+                # published fresh (<20 min) articles directly, bypassing the
+                # standby inventory and releasing one at a time even with no
+                # viewer. The *only* path from hidden to new is the viewer-active,
+                # five-second release pump (up to two prepared articles per tick).
+                # Previously completed articles retain their release_time above.
+                release_time=0.0
             revision_seed = json.dumps({
                 'title': snapshot.get('title') or '',
                 'html': snapshot.get('html') or '',

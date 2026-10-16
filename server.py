@@ -136,7 +136,7 @@ def standby_release_pump(stop_event):
 
 LEGACY_CLEANUP_LOCK = threading.RLock()
 LEGACY_CLEANUP_STATE = {"running":False,"last_run":0.0,"result":{"removed":0,"freed_bytes":0}}
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.247"
+UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.248"
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])", re.I)
 FEED_HINT_RE = re.compile(r"(?:\.rdf(?:$|[?#])|/feed/?(?:$|[?#])|[?&](?:xml|feed)(?:=|&|$)|new-soku\.net/new\.php|2chub\.sekaiwatch\.jp|matomeant\.com|owata-net\.com|ikioi\.jp)", re.I)
 
@@ -748,7 +748,7 @@ def resolve_instagram_post(raw_url):
     return {'ok':False,'post_id':info['id'],'post_url':info['url'],'kind':info['kind'],'error':last_error}
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "RPiMatome/0.1.247"
+    server_version = "RPiMatome/0.1.248"
     protocol_version = "HTTP/1.1"
     def translate_path(self, path):
         # Static files are always under web/.
@@ -862,6 +862,18 @@ class Handler(SimpleHTTPRequestHandler):
             progress=READY.initial_progress()
             target=READY.standby_target()
             stock=int(progress.get("standby_ready") or 0)
+            counts=progress.get("counts") or {}
+            worker=progress.get("worker") or {}
+            pending=int(counts.get("pending") or 0)
+            retry=int(counts.get("retry_due") or 0)
+            preparing=int(counts.get("preparing") or 0)
+            worker_state=str(worker.get("state") or "unknown")
+            # Diagnose empty stock without pretending that a 1000 target
+            # means 1000 fully prepared articles already exist.
+            refill_state=("stock_available" if stock else
+                          "worker_unavailable" if worker_state!="running" else
+                          "preparing_candidates" if pending+retry+preparing else
+                          "no_pending_candidates")
             return self._json({"ok":True,"standby_articles":target,
                                "choices":list(STANDBY_CHOICES),"new_max":MAX_NEW_BUFFER,
                                "standby_ready":stock,
@@ -871,7 +883,15 @@ class Handler(SimpleHTTPRequestHandler):
                                "new_buffer":int(progress.get("new_buffer") or 0),
                                "viewer_active":viewer_recently_active(),
                                "auto_release_seconds":5,
-                               "auto_release_batch":2})
+                               "auto_release_batch":2,
+                               "refill_state":refill_state,
+                               "candidate_pending":pending,
+                               "candidate_retry_due":retry,
+                               "candidate_preparing":preparing,
+                               "candidate_failed":int(counts.get("failed") or 0),
+                               "worker_state":worker_state,
+                               "last_discovery":int(progress.get("last_discovery") or 0),
+                               "discovery_health":progress.get("discovery_health") or {}})
         if u.path.startswith("/prepared/assets/"): return self.prepared_asset(u.path)
         if u.path == "/api/mobile-image": return self.mobile_image(u)
         if u.path == "/api/instagram-resolve":
@@ -890,7 +910,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: return self._json({"ok":False,"error":"bad name"},400)
             if data is None: return self._json({"ok":False,"error":"not found"},404)
             return self._json({"ok":True,"data":data})
-        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.247","build":247,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"standby_release_owner":"viewer_server_only","new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
+        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.248","build":248,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"standby_release_owner":"viewer_server_only","new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
         return super().do_GET()
     def do_HEAD(self):
         u=urllib.parse.urlparse(self.path)
@@ -1156,7 +1176,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--host",default="0.0.0.0"); ap.add_argument("--port",type=int,default=int(CFG["port"])); args=ap.parse_args()
     httpd=ThreadingHTTPServer((args.host,args.port),Handler)
-    print(f"RPi Matome Server v0.1.247  http://{args.host}:{args.port}/")
+    print(f"RPi Matome Server v0.1.248  http://{args.host}:{args.port}/")
     print(f"cache: text {CFG['text_retention_days']}d / image {CFG['image_retention_days']}d / max {CFG['max_cache_gb']}GB")
     stop_release=threading.Event()
     release_thread=threading.Thread(target=standby_release_pump, args=(stop_release,),
