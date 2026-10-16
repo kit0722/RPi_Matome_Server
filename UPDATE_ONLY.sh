@@ -20,7 +20,7 @@ for i in $(seq 1 60); do
   if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("version")=="0.1.248" and d.get("build")==248 and d.get("publication_mode")=="ready-only" and d.get("new_buffer_ack")==2 and d.get("new_buffer_state") and d.get("hidden_manifest") and d.get("standby_release_worker") and d.get("standby_release_owner")=="viewer_server_only" else 1)' 2>/dev/null \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.js?v=0311' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.css?v=0307' \
-    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'reader.css?v=0302' \
+    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'reader.css?v=0303' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'ready_viewer.js?v=0304' \
     && sudo systemctl is-active --quiet rpi-matome.service \
     && sudo systemctl is-active --quiet rpi-matome-prepare.service \
