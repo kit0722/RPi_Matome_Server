@@ -1215,21 +1215,30 @@ class ReadyStore:
     def new_buffer_status(self):
         """Small read-only 5-second poll; avoids sending 500-800 article rows."""
         with self.connect() as c:
-            cutoff=float(self._buffer_cutoff(c) or 0)
-            current=c.execute("""SELECT COUNT(*) n,COALESCE(MAX(release_time),0) latest
-              FROM articles WHERE schema_version>=?
-                AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND release_time>? AND state IN ('ready','retry','preparing')""",
-                (VIEW_SCHEMA_MIN,cutoff)).fetchone()
+            raw_cutoff=self._buffer_cutoff(c)
+            cutoff=float(raw_cutoff or 0)
+            # A fresh server has no committed 500-item cutoff yet. Treat its
+            # initial visible articles as the base list, not as 300 new ones.
+            if raw_cutoff is None:
+                count=0
+                latest=0.0
+            else:
+                current=c.execute("""SELECT COUNT(*) n,COALESCE(MAX(release_time),0) latest
+                  FROM articles WHERE schema_version>=?
+                    AND body_file IS NOT NULL AND ready_time IS NOT NULL
+                    AND release_time>? AND state IN ('ready','retry','preparing')""",
+                    (VIEW_SCHEMA_MIN,cutoff)).fetchone()
+                count=int(current['n'] or 0)
+                latest=float(current['latest'] or 0)
             ready=c.execute("""SELECT COUNT(*) n FROM articles
               WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
                 AND release_time<=0 AND state='ready'""",
                 (VIEW_SCHEMA_MIN,)).fetchone()
         return {
             'ok':True,
-            'new_buffer':min(MAX_NEW_BUFFER,int(current['n'] or 0)),
+            'new_buffer':min(MAX_NEW_BUFFER,count),
             'new_buffer_cutoff':cutoff,
-            'latest_new_release_time':float(current['latest'] or 0),
+            'latest_new_release_time':latest,
             'standby_ready':int(ready['n'] or 0)
         }
 

@@ -72,6 +72,17 @@ class NewBufferFlowTests(unittest.TestCase):
         self.store.release_waiting()
         self.assertEqual(self.store.new_buffer_status()["new_buffer"], 2)
 
+    def test_new_buffer_zero_before_initial_500_cutoff(self):
+        # Before first 500 are committed, their count must never be
+        # reported as 300 new articles by the lightweight endpoint.
+        with self.store.connect() as db:
+            db.execute("DELETE FROM status WHERE key='new_buffer_cutoff'")
+        self.seed("initial", 1000, 1019)
+        lite = self.store.new_buffer_status()
+        self.assertEqual(lite["new_buffer"], 0)
+        self.assertEqual(lite["latest_new_release_time"], 0.0)
+        self.assertEqual(self.store.initial_progress()["new_buffer"], 0)
+
     def test_simultaneous_retries_do_not_ack_twice(self):
         self.seed("base", 1000, 1500)
         self.seed("new", 1500, 1519)
