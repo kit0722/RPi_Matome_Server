@@ -997,3 +997,27 @@ html.mobile-ui .content {
   max-height: none !important;
   height: auto !important;
 }
+
+/* Reader font step controls must remain available on iPhone, iPad and desktop,
+   in both themes, including an embedded article. Historical desktop/tablet
+   display:none rules made + / - disappear despite working click handlers. */
+#readerHeader .reader-font-size-control .reader-font-step {
+  display:inline-flex !important;
+  align-items:center;
+  justify-content:center;
+  flex:0 0 auto;
+  min-width:32px;
+  min-height:32px;
+  touch-action:manipulation;
+}
+#readerHeader .reader-font-size-control {
+  display:inline-flex !important;
+  flex:0 0 auto;
+}
+@media (max-width:860px) {
+  #readerHeader {gap:5px;padding:8px 7px;}
+  #readerHeader .reader-font-size-control {gap:3px;margin-right:0;}
+  #readerHeader .reader-font-size-control .reader-font-step {
+    min-width:32px !important;min-height:32px !important;
+  }
+}

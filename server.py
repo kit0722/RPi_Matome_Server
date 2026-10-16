@@ -136,7 +136,7 @@ def standby_release_pump(stop_event):
 
 LEGACY_CLEANUP_LOCK = threading.RLock()
 LEGACY_CLEANUP_STATE = {"running":False,"last_run":0.0,"result":{"removed":0,"freed_bytes":0}}
-UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.246"
+UA = "Mozilla/5.0 (X11; Linux aarch64) AppleWebKit/537.36 Chrome/153 Safari/537.36 RPiMatome/0.1.247"
 IMAGE_EXT_RE = re.compile(r"\.(?:jpe?g|png|gif|webp|avif|bmp)(?:$|[?#])", re.I)
 FEED_HINT_RE = re.compile(r"(?:\.rdf(?:$|[?#])|/feed/?(?:$|[?#])|[?&](?:xml|feed)(?:=|&|$)|new-soku\.net/new\.php|2chub\.sekaiwatch\.jp|matomeant\.com|owata-net\.com|ikioi\.jp)", re.I)
 
@@ -748,7 +748,7 @@ def resolve_instagram_post(raw_url):
     return {'ok':False,'post_id':info['id'],'post_url':info['url'],'kind':info['kind'],'error':last_error}
 
 class Handler(SimpleHTTPRequestHandler):
-    server_version = "RPiMatome/0.1.246"
+    server_version = "RPiMatome/0.1.247"
     protocol_version = "HTTP/1.1"
     def translate_path(self, path):
         # Static files are always under web/.
@@ -822,7 +822,16 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"ok":True,"api_version":1,"article":article,"cache":cache_info},200,cc)
         if u.path == "/api/new-buffer-state":
             mark_viewer_active()
-            return self._json(READY.new_buffer_status())
+            state=READY.new_buffer_status()
+            viewer=viewer_recently_active()
+            available=int(state.get("standby_ready") or 0)
+            pending=int(state.get("new_buffer") or 0)
+            state["viewer_active"]=viewer
+            state["can_release_from_standby"]=bool(viewer and available>0 and pending<MAX_NEW_BUFFER)
+            state["refill_state"]=("standby_empty" if available<=0 else
+                                   "buffer_full" if pending>=MAX_NEW_BUFFER else
+                                   "viewer_inactive" if not viewer else "ready")
+            return self._json(state)
         if u.path == "/api/ready-list":
             mark_viewer_active()
             ready_items = READY.list_ready()
@@ -881,7 +890,7 @@ class Handler(SimpleHTTPRequestHandler):
             except Exception: return self._json({"ok":False,"error":"bad name"},400)
             if data is None: return self._json({"ok":False,"error":"not found"},404)
             return self._json({"ok":True,"data":data})
-        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.246","build":246,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"standby_release_owner":"viewer_server_only","new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
+        if u.path == "/api/health": return self._json({"ok":True,"version":"0.1.247","build":247,"publication_mode":"ready-only","app_api":1,"standby_release_worker":True,"standby_release_owner":"viewer_server_only","new_buffer_ack":2,"hidden_manifest":True,"new_buffer_state":True})
         return super().do_GET()
     def do_HEAD(self):
         u=urllib.parse.urlparse(self.path)
@@ -1147,7 +1156,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--host",default="0.0.0.0"); ap.add_argument("--port",type=int,default=int(CFG["port"])); args=ap.parse_args()
     httpd=ThreadingHTTPServer((args.host,args.port),Handler)
-    print(f"RPi Matome Server v0.1.246  http://{args.host}:{args.port}/")
+    print(f"RPi Matome Server v0.1.247  http://{args.host}:{args.port}/")
     print(f"cache: text {CFG['text_retention_days']}d / image {CFG['image_retention_days']}d / max {CFG['max_cache_gb']}GB")
     stop_release=threading.Event()
     release_thread=threading.Thread(target=standby_release_pump, args=(stop_release,),
