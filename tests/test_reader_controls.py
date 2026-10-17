@@ -25,9 +25,16 @@ class ReaderFontControlsTests(unittest.TestCase):
 
     def test_latest_matches_served_api_and_update_script(self):
         latest=json.loads((ROOT/"latest.json").read_text(encoding="utf-8"))
-        self.assertEqual(latest["version"],"0.1.251")
-        self.assertEqual(latest["build"],251)
+        # Derive the release from the live health declaration, never a fixed
+        # version literal that breaks the next correctly bumped release.
+        server=(ROOT/"server.py").read_text(encoding="utf-8")
+        health=re.search(r'"version":"([^"]+)","build":(\d+)',server)
+        self.assertIsNotNone(health)
+        self.assertEqual(latest["version"],health.group(1))
+        self.assertEqual(latest["build"],int(health.group(2)))
         script=(ROOT/"UPDATE_ONLY.sh").read_text(encoding="utf-8")
+        self.assertIn('d.get("version")=="'+latest["version"]+'"',script)
+        self.assertIn('d.get("build")=='+str(latest["build"]),script)
         self.assertIn('reader.css?v=0303',script)
 
     def test_buffer_state_reports_real_stock(self):

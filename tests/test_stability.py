@@ -1,5 +1,6 @@
 """Real temporary SQLite/WAL contention, retention and malformed-data tests."""
 import concurrent.futures
+import hashlib
 import json
 import sqlite3
 import tempfile
@@ -19,7 +20,9 @@ class StabilityTests(unittest.TestCase):
             c.execute('INSERT OR REPLACE INTO status VALUES (?,?)',('new_buffer_cutoff','1499'))
 
     def seed(self,url,release=1500,state='ready',body=True):
-        name=url.rsplit('/',1)[-1]+'.json'
+        # Production body filenames are SHA-256 digests. The cleanup guard
+        # intentionally refuses to unlink arbitrary/noncanonical filenames.
+        name=hashlib.sha256(url.encode('utf-8')).hexdigest()+'.json'
         if body:
             (self.store.bodies/name).write_text(json.dumps({'html':'<p>Prepared body</p>','title':url,'assets':[],'url':url}))
         item=json.dumps({'link':url,'title':url,'source':'test'})
@@ -38,6 +41,10 @@ class StabilityTests(unittest.TestCase):
             row = c.execute('SELECT state,body_file FROM articles WHERE url=?', (url,)).fetchone()
         self.assertEqual(row['state'], 'evicted')
         self.assertIsNone(row['body_file'])
+        # The forced OSError is now really raised by the canonical-body unlink;
+        # the committed retirement survives and the orphan can be retried.
+        self.assertTrue((self.store.bodies/
+                         (hashlib.sha256(url.encode('utf-8')).hexdigest()+'.json')).exists())
 
     def test_retired_body_removed_after_successful_commit(self):
         url = 'https://example.test/retire-normal'
@@ -45,7 +52,8 @@ class StabilityTests(unittest.TestCase):
         with self.store.connect() as c:
             c.execute("UPDATE articles SET state='retired',view_until=0 WHERE url=?", (url,))
         self.store.maintain()
-        self.assertFalse((self.store.bodies/'retire-normal.json').exists())
+        canonical=hashlib.sha256(url.encode('utf-8')).hexdigest()+'.json'
+        self.assertFalse((self.store.bodies/canonical).exists())
 
     def test_discovery_does_not_hide_completed_reprepare(self):
         url='https://example.test/saved'
