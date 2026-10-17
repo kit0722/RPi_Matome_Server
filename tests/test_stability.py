@@ -5,6 +5,8 @@ import sqlite3
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
+from pathlib import Path
 from ready_store import ReadyStore
 
 
@@ -24,6 +26,26 @@ class StabilityTests(unittest.TestCase):
         with self.store.connect() as c:
             c.execute('''INSERT INTO articles(url,item,source_time,ready_time,state,body_file,schema_version,release_time)
               VALUES (?,?,?,?,?,?,?,?)''',(url,item,1500,1500 if body else None,state,name if body else None,33,release))
+
+    def test_retired_body_failure_cannot_rollback_committed_retirement(self):
+        url = 'https://example.test/retire-unlink-error'
+        self.seed(url, release=0)
+        with self.store.connect() as c:
+            c.execute("UPDATE articles SET state='retired',view_until=0 WHERE url=?", (url,))
+        with patch.object(Path, 'unlink', side_effect=OSError('simulated file error')):
+            self.store.maintain()
+        with self.store.connect() as c:
+            row = c.execute('SELECT state,body_file FROM articles WHERE url=?', (url,)).fetchone()
+        self.assertEqual(row['state'], 'evicted')
+        self.assertIsNone(row['body_file'])
+
+    def test_retired_body_removed_after_successful_commit(self):
+        url = 'https://example.test/retire-normal'
+        self.seed(url, release=0)
+        with self.store.connect() as c:
+            c.execute("UPDATE articles SET state='retired',view_until=0 WHERE url=?", (url,))
+        self.store.maintain()
+        self.assertFalse((self.store.bodies/'retire-normal.json').exists())
 
     def test_discovery_does_not_hide_completed_reprepare(self):
         url='https://example.test/saved'

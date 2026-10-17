@@ -2138,6 +2138,7 @@ class ReadyStore:
         """
         now=time.time()
         claim_ttl=2*3600
+        deferred_body_deletions = []
         with self.connect() as c:
             c.execute('BEGIN IMMEDIATE')
             c.execute('DELETE FROM asset_claims WHERE touched<?',(now-claim_ttl,))
@@ -2174,7 +2175,7 @@ class ReadyStore:
             for row in expired:
                 candidates.update(json.loads(row['assets'] or '[]'))
                 if row['body_file'] and re.fullmatch(r'[a-f0-9]{64}\.json',row['body_file']):
-                    (self.bodies/row['body_file']).unlink(missing_ok=True)
+                    deferred_body_deletions.append(row['body_file'])
                 c.execute('INSERT OR IGNORE INTO raw_gc VALUES (?)',(row['url'],))
                 c.execute("UPDATE articles SET state='evicted',body_file=NULL,assets=NULL WHERE url=?",(row['url'],))
 
@@ -2186,11 +2187,15 @@ class ReadyStore:
                 try:path=self.asset_path(public)
                 except ValueError:continue
                 source_hash=path.name.split('.',1)[0]
-                path.unlink(missing_ok=True)
-                for derived in self.mobile.glob(source_hash+'_w*_q*.webp'):
-                    derived.unlink(missing_ok=True)
-                for marker in self.mobile.glob(source_hash+'_w*_q*.orig'):
-                    marker.unlink(missing_ok=True)
+                # File-system cleanup errors must not roll back article DB state.
+                try:
+                    path.unlink(missing_ok=True)
+                    for derived in self.mobile.glob(source_hash+'_w*_q*.webp'):
+                        derived.unlink(missing_ok=True)
+                    for marker in self.mobile.glob(source_hash+'_w*_q*.orig'):
+                        marker.unlink(missing_ok=True)
+                except OSError:
+                    pass
                 for source in c.execute('SELECT url FROM asset_sources WHERE path=?',(public,)).fetchall():
                     c.execute('INSERT OR IGNORE INTO raw_gc VALUES (?)',(source['url'],))
                 c.execute('DELETE FROM asset_sources WHERE path=?',(public,))
@@ -2198,7 +2203,27 @@ class ReadyStore:
 
             protected={r['url'] for r in c.execute("SELECT url FROM articles WHERE state IN ('ready','retry','preparing') OR (state='retired' AND view_until>?)",(now,))}
             protected.update(r['url'] for r in c.execute('SELECT url,path FROM asset_sources') if r['path'] in keep)
-            return [r['url'] for r in c.execute('SELECT url FROM raw_gc') if r['url'] not in protected]
+            gc_urls = [r['url'] for r in c.execute('SELECT url FROM raw_gc') if r['url'] not in protected]
+
+        # Only remove a body after its retirement transaction has committed.
+        # Recheck ownership under a write lock, so concurrent reprepare cannot
+        # reuse the same body filename between verification and unlink.
+        if deferred_body_deletions:
+            try:
+                with self.connect() as c:
+                    c.execute('BEGIN IMMEDIATE')
+                    for name in set(deferred_body_deletions):
+                        if c.execute('SELECT 1 FROM articles WHERE body_file=? LIMIT 1',
+                                     (name,)).fetchone():
+                            continue
+                        try:
+                            (self.bodies/name).unlink(missing_ok=True)
+                        except OSError:
+                            pass
+            except sqlite3.OperationalError:
+                # Defer deletion rather than risking an unowned-but-live file.
+                pass
+        return gc_urls
 
     def maintain_if_due(self, min_interval=30.0):
         """Run expensive ownership GC at most once per interval in this process."""
