@@ -98,7 +98,12 @@ async function loadPreparedArticle() {
       img.classList.add('hover-gif');img.title='画面内に90%以上表示すると自動再生';
       watchGifFullVisibility(img,on=>{img.src=on?img.dataset.preparedGif:img.dataset.preparedPoster;});
       img.onclick=e=>{e.preventDefault();e.stopPropagation();};
-    } else img.onclick=e=>{e.preventDefault();openLightbox(img.src);};
+    } else {
+      const anchor=img.closest?.('a[href]');
+      const href=String(anchor?.href||anchor?.getAttribute?.('href')||'');
+      img.onclick=(/^https?:\/\//i.test(href)&&/\.(?:mp4|webm|m4v|m3u8)(?:$|[?#])/i.test(href))
+        ? null : (e=>{e.preventDefault();openLightbox(img.src);});
+    }
   }
   loadingEl.hidden=true;articleEl.hidden=false;applyReaderFont(localStorage.getItem(readerFontKey())||16,false);restoreReaderScroll();
   // Keep lazy media of the currently open article safe if it moves outside the latest 500.

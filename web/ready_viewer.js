@@ -2323,7 +2323,14 @@ async function loadPreparedArticle() {
         if(img.getAttribute('src')!==mobile)img.setAttribute('src',mobile);
         img.onerror=()=>{if(img.getAttribute('src')!==original){img.onerror=null;img.setAttribute('src',original);}};
       }
-      img.onclick=e=>{e.preventDefault();openLightbox(original);};
+      // When an image is linked to video, let the actual media hyperlink work.
+      const anchor=img.closest?.('a[href]');
+      const videoHref=String(anchor?.href||anchor?.getAttribute?.('href')||'');
+      if(/^https?:\/\//i.test(videoHref)&&/\.(?:mp4|webm|m4v|m3u8)(?:$|[?#])/i.test(videoHref)) {
+        img.onclick=null;
+      }else {
+        img.onclick=e=>{e.preventDefault();openLightbox(original);};
+      }
     }
   }
   // Keep lazy media of the currently open article safe if it moves outside the latest 500.
@@ -2332,6 +2339,9 @@ async function loadPreparedArticle() {
 
 contentEl.addEventListener('click', e=>{
   const a=e.target.closest?.('a[href]');
+  const href=String(a?.href||a?.getAttribute?.('href')||'');
+  // Do not steal taps intended for the source video's real hyperlink.
+  if(/^https?:\/\//i.test(href)&&/\.(?:mp4|webm|m4v|m3u8)(?:$|[?#])/i.test(href))return;
   const img=a?.querySelector('img');
   if (!img) return;
   if (img.dataset.preparedGif) return;

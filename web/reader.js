@@ -6938,6 +6938,10 @@ async function extractArticle() {
         // Playback is controlled by 90%-visibility observation. This only blocks navigation/lightbox.
         return false;
       }
+      // An image wrapping a video source must remain a working video link.
+      const videoAnchor=img.closest?.('a[href]');
+      const videoHref=String(videoAnchor?.href||videoAnchor?.getAttribute?.('href')||'');
+      if(/^https?:\/\//i.test(videoHref)&&/\.(?:mp4|webm|m4v|m3u8)(?:$|[?#])/i.test(videoHref))return;
       openLightbox(img.src);
     };
   }
