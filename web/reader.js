@@ -5061,6 +5061,7 @@ function sanitize(root, base) {
   protectInstagramEmbeds(clone, base);
   protectImgurEmbeds(clone, base);
   protectDirectVideoLinks(clone, base);
+  if(is1000mgUrl(base))retain1000mgVideoEmbeds(clone,base);
 
   removeGoogleChromePromos(clone, base);
   removeAffiliateImageAds(clone, base);
@@ -6498,6 +6499,18 @@ function prepareCandidate(root, baseUrl, title) {
   box.append(...clean.childNodes);
   removeDuplicateChrome(box, title);
   removeItsokuLeadMeta(box, baseUrl);
+  if(is1000mgUrl(baseUrl)){
+    // Site-scoped body already excludes WordPress nav, sidebar and the giant
+    // global slogan. Avoid generic link-farm cleanup deleting a real video.
+    const media=box.querySelectorAll('video,iframe,.x-static-card,.youtube-inline-card,a[data-video-embed-fallback],a[href*="video.twimg.com"],a[href*="youtube.com"],a[href*="youtu.be"],a[href*="vimeo.com"],a[href*="streamable.com"],a[href*="x.com/"],a[href*="twitter.com/"]').length;
+    const text=cleanText(box.textContent||'');
+    if(PREPARING && (text.length<35||(/1000mgはYouTubeを中心に/.test(text)&&text.length<160)))
+      throw new Error('1000mgの記事本文ではなく共通紹介文を取得しました');
+    if(PREPARING && /[【\[]動画[】\]]/.test(title) && media===0)
+      throw new Error('1000mgの動画を取得できません。未完成として再準備します。');
+    append1000mgComments(box,root.ownerDocument?.body||root);
+    compactWhitespace(box);return box;
+  }
   if(isGossip1Url(baseUrl)){
     // GOSSIPは1レスだけの短い記事があり、汎用のリンク密度/ノイズ判定だと本文まで消える。
     // サイト専用本文を確保した後は終端だけ切って、そのまま本文として採用する。
@@ -6725,6 +6738,170 @@ function makeMatometaNewsBodyBundle(doc,title=''){
   return null;
 }
 
+// 1000mg: title and video live in the post; the page-wide H1 is a site
+// description, not the article. Do not treat that description as a completed video.
+function is1000mgUrl(url){
+  try{return new URL(url).hostname.toLowerCase().replace(/^www\./,'')==='1000mg.jp';}
+  catch{return false;}
+}
+function videoProviderSource(raw,base){
+  try{
+    const url=new URL(String(raw||'').trim(),base||location.href);
+    if(!['https:','http:'].includes(url.protocol))return '';
+    const host=url.hostname.toLowerCase().replace(/^www\./,'');
+    if(/(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adnxs\.com|amazon-adsystem\.com|adservice\.google\.com)$/.test(host))return '';
+    const known=/(?:^|\.)(?:youtube\.com|youtube-nocookie\.com|youtu\.be|vimeo\.com|dailymotion\.com|dai\.ly|streamable\.com|tiktok\.com|facebook\.com|fb\.watch|x\.com|twitter\.com|twimg\.com|rumble\.com|bilibili\.com|b23\.tv|videopress\.com|reddit\.com|oddysee\.com|vk\.com|ok\.ru|jwplayer\.com|vid\.pr0gramm\.com)$/.test(host);
+    const directMedia=/\.(?:mp4|webm|m3u8)(?:$|[?#])/i.test(url.href)&&!/(?:adserver|tracking|sponsor)/i.test(host);
+    return (known||directMedia)?url.href:'';
+  }catch{return '';}
+}
+function retain1000mgVideoEmbeds(root,base){
+  if(!root?.querySelectorAll)return 0;
+  let retained=0;
+  for(const frame of [...root.querySelectorAll('iframe')]){
+    const source=videoProviderSource(frame.getAttribute('src')||frame.getAttribute('data-src')||
+      frame.getAttribute('data-lazy-src')||'',base);
+    if(!source)continue;
+    // Native YouTube/X conversion happens later. Restore lazy src early.
+    frame.setAttribute('src',source);
+    if(isYouTubeEmbedIframe(frame,base)||isXEmbedIframe(frame,base)){retained++;continue;}
+    const anchor=root.ownerDocument.createElement('a');
+    anchor.setAttribute('href',source);
+    anchor.dataset.videoEmbedFallback='1';
+    anchor.textContent='動画の提供元を開く';
+    frame.replaceWith(anchor);retained++;
+  }
+  return retained;
+}
+function make1000mgBodyBundle(doc,title='',base=''){
+  if(!doc?.body)return null;
+  const norm=x=>cleanText(x||'').replace(/\s*[-|｜]\s*1000mg.*$/i,'').replace(/\s+/g,'').toLowerCase();
+  const wanted=norm(title);
+  const headings=[...doc.querySelectorAll('h1,h2,h3,.entry-title,.post-title,.article-title')];
+  const titleNode=headings.find(el=>{
+    const t=norm(el.textContent);return t&&wanted&&(t===wanted||
+      (t.length>12&&wanted.includes(t))||(wanted.length>12&&t.includes(wanted)));
+  });
+  const urlPath=(()=>{try{return new URL(doc.location?.href||'').pathname;}catch{return '';}})();
+  const postId=(urlPath.match(/^\/(\d{4,})\/?$/)||[])[1]||'';
+  const roots=[];
+  const push=x=>{if(x&&!roots.includes(x))roots.push(x);};
+  push(titleNode?.closest?.('article,[id^="post-"],.post,.entry,.single-post,.single-article,.article-box,.article_box,.post-box,.post_box,.entry-box,.entry_box'));
+  // Some WordPress templates don't wrap entries in <article>. Try a few
+  // title ancestors, but never accept the whole page or navigation header.
+  for(let parent=titleNode?.parentElement,level=0;parent&&parent!==doc.body&&level<5;parent=parent.parentElement,level++){
+    if(parent.matches?.('header,nav,aside,footer'))break;
+    push(parent);
+  }
+  if(postId)push(doc.getElementById?.('post-'+postId));
+  for(const el of doc.querySelectorAll('article.post,article,.hentry,.single-post,[id^="post-"]')){
+    if(titleNode && !el.contains(titleNode))continue;
+    push(el);
+  }
+  const selectors=[
+    '.entry-content','.post-content','.post-body','.post_body','.article-content',
+    '.article-body','.article_body','.entry-body','.entry_body','.entrytext',
+    '.post-text','.article-text','.post-detail','.article-detail',
+    '[itemprop="articleBody"]','#article-body','#post-content'
+  ].join(',');
+  for(const root of roots){
+    let blocks=[...root.querySelectorAll(selectors)].filter(el=>
+      !el.closest('aside,nav,footer,#comments,.comment-list,.commentlist,.related,.recommend'));
+    blocks=blocks.filter(el=>!blocks.some(other=>other!==el&&other.contains(el)));
+    if(!blocks.length && titleNode && root.contains(titleNode) &&
+       root!==doc.body && root.matches?.('article,[id^="post-"],.post,.entry,.single-post,.single-article,.article-box,.article_box,.post-box,.post_box'))
+      blocks=[root];
+    if(!blocks.length)continue;
+    blocks.sort((a,b)=>(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);
+    const wrap=doc.createElement('div');wrap.dataset.site1000mgBody='1';
+    for(const b of blocks)wrap.append(b.cloneNode(true));
+    // Fallback post-wrapper selection can include the public comments below
+    // the story; extract those once into separate cards, not a duplicate copy.
+    for(const extra of [...wrap.querySelectorAll('#comments,.commentlist,.comment-list,#respond,.comments,.related,.related-posts,.recommend')])extra.remove();
+    const text=cleanText(wrap.textContent||'');
+    // The site's slogan appears above every post: never publish that alone.
+    if(text.length<35||(/1000mgはYouTubeを中心に/.test(text)&&text.length<160))continue;
+    restore1000mgPageVideoMetadata(wrap,doc,base);
+    wrap.dataset.site1000mgSourceMedia=String(wrap.querySelectorAll(
+      'video,iframe,blockquote.twitter-tweet,blockquote.instagram-media,a[data-video-embed-fallback],a[href*="video.twimg.com"],a[href*="youtube.com"],a[href*="youtu.be"],a[href*="vimeo.com"],a[href*="streamable.com"],a[href*="x.com/"],a[href*="twitter.com/"]'
+    ).length);
+    return wrap;
+  }
+  return null;
+}
+function restore1000mgPageVideoMetadata(bundle,doc,base){
+  // VideoObject and OG player URLs are article-level signals even when video
+  // markup is injected by JavaScript after initial HTML load.
+  const urls=[];
+  const push=raw=>{
+    const url=videoProviderSource(raw,base);
+    if(url&&!urls.includes(url))urls.push(url);
+  };
+  for(const meta of doc.querySelectorAll('meta[property="og:video"],meta[property="og:video:url"],meta[name="twitter:player"],meta[itemprop="embedUrl"],meta[itemprop="contentUrl"]'))
+    push(meta.getAttribute('content'));
+  for(const script of doc.querySelectorAll('script[type="application/ld+json"]')){
+    try{
+      const json=JSON.parse(script.textContent||'null');let visited=0;
+      const walk=(node,depth=0)=>{
+        if(!node||depth>7||++visited>130)return;
+        if(Array.isArray(node)){node.forEach(x=>walk(x,depth+1));return;}
+        if(typeof node!=='object')return;
+        const type=String(node['@type']||'');
+        if(/VideoObject/i.test(type)){
+          push(node.embedUrl);push(node.contentUrl);push(node.url);
+        }
+        for(const child of Object.values(node))if(child&&typeof child==='object')walk(child,depth+1);
+      };walk(json);
+    }catch{}
+  }
+  if(bundle.querySelector('video,iframe,a[data-video-embed-fallback],blockquote.twitter-tweet,blockquote.instagram-media'))return 0;
+  let saved=0;
+  for(const url of urls.slice(0,4)){
+    const a=doc.createElement('a');a.href=url;a.dataset.videoEmbedFallback='1';
+    a.textContent='動画の提供元を開く';bundle.append(a);saved++;
+  }
+  return saved;
+}
+
+function append1000mgComments(box,source){
+  const doc=source?.ownerDocument||document;
+  const selectors=[
+    '#comments .commentlist > li','#comments .comment-list > li',
+    '.commentlist > li.comment','.comment-list > li.comment',
+    '#comments-list li.comment','#comments li[id^="comment-"]',
+    'li[id^="comment-"],article.comment,div[id^="comment-"],.commentlist .comment-body,.comment-list .comment-body'
+  ];
+  let comments=[];
+  for(const selector of selectors){
+    const matches=[...doc.querySelectorAll(selector)];
+    if(matches.length>comments.length)comments=matches;
+  }
+  const seen=new Set(),entries=[];
+  for(const node of comments){
+    const id=node.id||'';
+    if(id&&seen.has(id))continue;
+    const copy=node.cloneNode(true);
+    for(const nested of [...copy.querySelectorAll('ol.children,ul.children,form,button,.reply,.comment-reply-link')])nested.remove();
+    const body=copy.querySelector('.comment-content,.comment-body,.comment-text,.comment_text,.comment-entry,.text')||copy;
+    const text=cleanText(body.textContent||'');
+    if(text.length<2||text.length>12000)continue;
+    const author=cleanText(copy.querySelector('.comment-author,.fn,.comment-name,.author')?.textContent||'');
+    const when=cleanText(copy.querySelector('time,.comment-meta,.comment-date')?.textContent||'');
+    const token=id||author+'|'+when+'|'+text;
+    if(seen.has(token))continue;seen.add(token);if(id)seen.add(id);
+    entries.push({text,meta:[author,when].filter(Boolean).join(' · ')});
+    if(entries.length>=350)break;
+  }
+  if(!entries.length)return 0;
+  const section=doc.createElement('section');section.className='site-feedback-section';section.dataset.site1000mgComments='1';
+  const h=doc.createElement('div');h.className='site-feedback-heading';h.textContent='コメント ('+entries.length+')';section.append(h);
+  for(const item of entries){
+    const card=doc.createElement('div');card.className='site-feedback-card';
+    if(item.meta){const meta=doc.createElement('div');meta.className='site-feedback-meta';meta.textContent=item.meta;card.append(meta);}
+    const body=doc.createElement('div');body.className='site-feedback-body';body.textContent=item.text;card.append(body);section.append(card);
+  }
+  box.append(section);return entries.length;
+}
 function chooseBestPreparedContent(doc, baseUrl, title, primaryRoot, preferPrimary=false, primaryIsTitle=false) {
   // サイト専用rootは信頼度が高い。ただし「リンク一覧だけ」の箱は即採用しない。
   if (preferPrimary && primaryRoot) {
@@ -6877,14 +7054,17 @@ async function extractArticle() {
   const jinRoot = jinBundleRoot || jinMarkerRoot;
   const matometaRoot = isMatometaNewsUrl(finalUrl) ? makeMatometaNewsBodyBundle(doc,title) : null;
   const titleRoot = findTitleAnchoredArticleRoot(doc, title);
-  const root = matometaRoot || vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot || titleRoot || pickArticleRoot(doc);
+  const site1000mgRoot=is1000mgUrl(finalUrl)?make1000mgBodyBundle(doc,title,finalUrl):null;
+  if(PREPARING && is1000mgUrl(finalUrl)&&!site1000mgRoot)
+    throw new Error('1000mgの記事本文を見つけられません。サイト紹介文では完成にしません。');
+  const root = site1000mgRoot || matometaRoot || vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot || titleRoot || pickArticleRoot(doc);
   // When a site exposes explicit reply blocks, do not fall back to a generic page-wide
   // candidate after we have found them.  That fallback was what reintroduced sidebars,
   // Amazon and livedoor Blog chrome on some Konoyubi/World-Fusigi articles.
-  const lockedSiteRoot = !!(matometaRoot?.dataset?.matometanewsBodyBundle || vipperRoot?.dataset?.vipperOreBodyBundle || itaiRoot?.dataset?.itaiNewsBodyBundle || itsokuRoot?.dataset?.itsokuBodyBundle || esuteruRoot?.dataset?.esuteruBodyBundle || gossipRoot?.dataset?.gossip1BodyBundle || hamusokuRoot?.dataset?.replyDenseSiteBundle || fesokuRoot?.dataset?.replyDenseSiteBundle || nanjPrideRoot?.dataset?.replyDenseSiteBundle || konoRoot?.dataset?.konoyubiReplies || ushiRoot?.dataset?.livedoorThreadBundle || worldRoot?.dataset?.livedoorThreadBundle || (isRabbitSokuhoUrl(finalUrl) && rabbitRoot) || alfBundleRoot?.dataset?.alfalfalfaBodyBundle || (isJin115Url(finalUrl) && !!jinRoot));
+  const lockedSiteRoot = !!(site1000mgRoot?.dataset?.site1000mgBody || matometaRoot?.dataset?.matometanewsBodyBundle || vipperRoot?.dataset?.vipperOreBodyBundle || itaiRoot?.dataset?.itaiNewsBodyBundle || itsokuRoot?.dataset?.itsokuBodyBundle || esuteruRoot?.dataset?.esuteruBodyBundle || gossipRoot?.dataset?.gossip1BodyBundle || hamusokuRoot?.dataset?.replyDenseSiteBundle || fesokuRoot?.dataset?.replyDenseSiteBundle || nanjPrideRoot?.dataset?.replyDenseSiteBundle || konoRoot?.dataset?.konoyubiReplies || ushiRoot?.dataset?.livedoorThreadBundle || worldRoot?.dataset?.livedoorThreadBundle || (isRabbitSokuhoUrl(finalUrl) && rabbitRoot) || alfBundleRoot?.dataset?.alfalfalfaBodyBundle || (isJin115Url(finalUrl) && !!jinRoot));
   let best = lockedSiteRoot ? prepareCandidate(root, finalUrl, title) : chooseBestPreparedContent(
     doc, finalUrl, title, root,
-    !!(matometaRoot || vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot),
+    !!(site1000mgRoot || matometaRoot || vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot),
     !!titleRoot && root === titleRoot
   );
   // General safety net: if the selected box is suspiciously thin while the raw page clearly has
@@ -7022,6 +7202,14 @@ async function extractArticle() {
     if(!final.present || (source.images>0 && final.images===0 && !final.x) ||
        (source.video && !final.video) || (source.x && !final.x))
       throw new Error('レス1の本文・画像・動画が失われました。再準備します。');
+  }
+  if(PREPARING && is1000mgUrl(finalUrl)){
+    const sourceCount=Number(site1000mgRoot?.dataset.site1000mgSourceMedia||0);
+    const readyCount=contentEl.querySelectorAll('video,iframe,.prepared-video,.youtube-inline-card,.x-static-card,a[data-video-embed-fallback],a[href*="video.twimg.com"],a[href*="youtube.com"],a[href*="youtu.be"],a[href*="vimeo.com"],a[href*="streamable.com"],a[href*="x.com/"],a[href*="twitter.com/"]').length;
+    if(sourceCount>0 && readyCount===0)
+      throw new Error('1000mgの記事動画が整形で消えました。保存を中止します。');
+    if(/[【\[]動画[】\]]/.test(title)&&readyCount===0)
+      throw new Error('1000mgの動画がありません。未完成として再試行します。');
   }
   if(PREPARING && isMatometaNewsUrl(finalUrl)){
     const expected=Number(contentEl.dataset.matometanewsSourceReplies||0);

@@ -1509,6 +1509,29 @@ function matometanewsVisibleReplyCount(root) {
   const headers=root.querySelectorAll?.('.reply-meta,.mobile-thread-meta,.t_h,.resHeader')?.length||0;
   return Math.max(lines,headers);
 }
+// v0.1.261: A previously prepared 1000mg article may be nothing but
+// the site's global YouTube slogan. Repair only this article on viewing it.
+function maybeRepair1000mgArticle(article){
+  let host='';try{host=new URL(article?.original_url||requestedUrl||'').hostname.toLowerCase().replace(/^www\./,'');}catch{}
+  if(host!=='1000mg.jp')return false;
+  const text=String(contentEl.innerText||contentEl.textContent||'');
+  const media=contentEl.querySelectorAll('video,.prepared-video,.youtube-inline-card,.x-static-card,iframe,a[data-video-embed-fallback],a[href*="video.twimg.com"],a[href*="youtube.com"],a[href*="x.com/"],a[href*="twitter.com/"]').length;
+  const cards=contentEl.querySelectorAll('.site-feedback-card').length;
+  const title=String(article?.title||'');
+  const isIntro=/1000mgはYouTubeを中心に/.test(text);
+  const thin=text.replace(/\s+/g,'').length<140;
+  if(!(isIntro && (thin||media===0)) && !(/[【\[]動画[】\]]/.test(title)&&media===0&&cards===0))return false;
+  const key='matome_1000mg_article_repair_v261:'+encodeURIComponent(requestedUrl||'');
+  const now=Date.now(),revision=String(article?.revision||article?.ready_time||'');
+  let last={};
+  try{last=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{}
+  if(last.revision===revision&&now-Number(last.at||0)<24*60*60*1000)return false;
+  try{localStorage.setItem(key,JSON.stringify({revision,at:now}));}catch{}
+  fetch('/api/reprepare',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:requestedUrl})})
+    .then(res=>res.ok?pollPreparedRevision(revision):null).catch(()=>{});
+  return false;
+}
+
 function maybeRepairMatometanewsReplies(article){
   let host='';try{host=new URL(article?.original_url||requestedUrl||'').hostname.toLowerCase().replace(/^www\./,'');}catch{}
   if(host!=='matometanews.com')return false;
@@ -2095,6 +2118,16 @@ async function loadPreparedArticle() {
     }
   }
   contentEl.replaceChildren(template.content.cloneNode(true));
+  // Save real 1000mg WordPress comments before any generic display cleanup.
+  let saved1000mgComments=null,saved1000mgCommentCount=0;
+  try{
+    const h=new URL(requestedUrl||article.original_url||'').hostname.toLowerCase().replace(/^www\./,'');
+    if(h==='1000mg.jp'){
+      const section=contentEl.querySelector('.site-feedback-section[data-site1000mg-comments="1"]');
+      saved1000mgCommentCount=section?.querySelectorAll('.site-feedback-card').length||0;
+      if(saved1000mgCommentCount>0)saved1000mgComments=section.cloneNode(true);
+    }
+  }catch{}
   // Protect all already-stored MatometaNews forum replies before generic
   // display cleanup (which otherwise can prune reply blocks).
   let matometaDisplayBackup=null,matometaDisplayCount=0;
@@ -2280,6 +2313,10 @@ async function loadPreparedArticle() {
     console.info('MATOMETA_DISPLAY_RESTORED',JSON.stringify({
       url:requestedUrl,stored:matometaDisplayCount,final:matometanewsVisibleReplyCount(contentEl)}));
   }
+  if(saved1000mgComments && saved1000mgCommentCount>contentEl.querySelectorAll('.site-feedback-section[data-site1000mg-comments="1"] .site-feedback-card').length){
+    contentEl.querySelectorAll('.site-feedback-section[data-site1000mg-comments="1"]').forEach(el=>el.remove());
+    contentEl.append(saved1000mgComments.cloneNode(true));
+  }
   // Final pass also covers content restored by integrity guards and structured comments appended above.
   normalizeReaderTextSizing(contentEl);
   normalizeReaderArticleSpacing(contentEl);
@@ -2290,6 +2327,7 @@ async function loadPreparedArticle() {
   if (!PREPARING) setTimeout(protectReaderPosition, 460);
   if(maybeRefreshUshi32Prepared(article))return;
   maybeRefreshMissingFirstReply(article);
+  maybeRepair1000mgArticle(article);
   maybeRepairMatometanewsReplies(article);
   maybeRepairRequiredReplyMedia(article);
   maybeRepairMissingXCardPreview(article);

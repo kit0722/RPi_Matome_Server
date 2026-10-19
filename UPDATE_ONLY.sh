@@ -17,13 +17,13 @@ PY
 echo '反映確認中（準備用ブラウザの起動を待ちます）'
 ok=0
 for i in $(seq 1 60); do
-  if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("version")=="0.1.260" and d.get("build")==260 and d.get("publication_mode")=="ready-only" and d.get("new_buffer_ack")==2 and d.get("new_buffer_state") and d.get("hidden_manifest") and d.get("standby_release_worker") and d.get("standby_release_owner")=="viewer_server_only" else 1)' 2>/dev/null \
+  if curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/health" 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if d.get("version")=="0.1.261" and d.get("build")==261 and d.get("publication_mode")=="ready-only" and d.get("new_buffer_ack")==2 and d.get("new_buffer_state") and d.get("hidden_manifest") and d.get("standby_release_worker") and d.get("standby_release_owner")=="viewer_server_only" else 1)' 2>/dev/null \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.js?v=0313' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/index.html" 2>/dev/null | grep -q 'index.css?v=0307' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'reader.css?v=0306' \
-    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'ready_viewer.js?v=0311' \
+    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/reader.html" 2>/dev/null | grep -q 'ready_viewer.js?v=0312' \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/prepare.html" 2>/dev/null | grep -q 'prepare_snapshot.js?v=0285' \
-    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/prepare.html" 2>/dev/null | grep -q 'reader.js?v=0303' \
+    && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/prepare.html" 2>/dev/null | grep -q 'reader.js?v=0304' \
     && sudo systemctl is-active --quiet rpi-matome.service \
     && sudo systemctl is-active --quiet rpi-matome-prepare.service \
     && curl -fsS --max-time 3 "http://127.0.0.1:${PORT}/api/preparation-status" 2>/dev/null | python3 -c 'import json,sys,time; w=json.load(sys.stdin).get("worker",{}); sys.exit(0 if w.get("state")=="running" and w.get("renderer_ready") and abs(time.time()*1000-w.get("heartbeat",0))<300000 else 1)' 2>/dev/null; then
@@ -37,7 +37,7 @@ if [ "$ok" -ne 1 ]; then
   sudo systemctl status rpi-matome.service rpi-matome-prepare.service --no-pager -l || true
   exit 1
 fi
-echo '反映確認: v0.1.260 OK'
+echo '反映確認: v0.1.261 OK'
 echo '準備サービス起動済み。完成した記事から一覧に表示します。'
 echo "更新完了: http://$(hostname -I | awk '{print $1}'):${PORT}/"
 
@@ -55,7 +55,7 @@ if [ -f "$YAHOO_SRC/install.sh" ]; then
   fi
 fi
 
-# v0.1.260: keep only the just-installed distribution archive/folder.
+# v0.1.261: keep only the just-installed distribution archive/folder.
 # Runtime files under /opt/rpi-matome and its cache/database are never touched here.
 BASE_DIR="$(cd .. && pwd)"
 KEEP_DIR="$(basename "$PWD")"
