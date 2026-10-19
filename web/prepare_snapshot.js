@@ -635,8 +635,16 @@ async function prepareSnapshot(info) {
     }catch{}
   }
   const alfalfaBodyStats=root.dataset?.alfalfaBodySource!=null?{kind:'alfalfalfa',source:Number(root.dataset.alfalfaBodySource||0),bundle:Number(root.dataset.alfalfaBodyBundle||0),prepared:Number(root.dataset.alfalfaBodyPrepared||0),final:Number(alfalfaFinal||0),mode:String(root.dataset.alfalfaBodyMode||'')}:null;
+  // Retain the source-vs-final forum reply counts for post-deployment
+  // diagnosis and recovery of previously truncated MatometaNews articles.
+  const matometaReplyStats=root.dataset?.matometanewsSourceReplies!=null?{
+    kind:'matometanews',
+    source:Number(root.dataset.matometanewsSourceReplies||0),
+    prepared:Number(root.dataset.matometanewsPreparedReplies||0),
+    final:Number(root.dataset.matometanewsFinalReplies||0)
+  }:null;
   return {schema:33,complete:true,title:info.title,original_url:info.finalUrl,
-    source_date:info.date,meta:metaEl.textContent,html:root.innerHTML,thumb,assets:[...preparedAssets],videos:preparedVideos,warnings,comment_stats:commentStats,site_feedback:siteFeedback,gossip_body_stats:gossipBodyStats,alfalfa_body_stats:alfalfaBodyStats};
+    source_date:info.date,meta:metaEl.textContent,html:root.innerHTML,thumb,assets:[...preparedAssets],videos:preparedVideos,warnings,comment_stats:commentStats,site_feedback:siteFeedback,gossip_body_stats:gossipBodyStats,alfalfa_body_stats:alfalfaBodyStats,reply_stats:matometaReplyStats};
 }
 
 // Twitter variants and temporary query strings still refer to the same underlying video.

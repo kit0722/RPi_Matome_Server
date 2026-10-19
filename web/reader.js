@@ -5450,6 +5450,9 @@ function removeMidArticleExternalCards(container, baseUrl="") {
     }
 
     if (!hasMeaningfulArticleContentAfter(block, container)) continue;
+    // MatometaNews often embeds the linked X post or source inside a genuine
+    // forum reply. The generic article-link cleanup must not delete that reply.
+    if (isMatometaNewsUrl(baseUrl) && replySignalCount(block)>0) continue;
 
     const clone = block.cloneNode(true);
     for (const x of [...clone.querySelectorAll("a[href]")]) x.remove();
@@ -6667,6 +6670,61 @@ function fallbackArticleRoots(doc) {
   return out;
 }
 
+// MatometaNews splits a thread into article-body-inner and article-body-more.
+// The generic title-anchored fast path can finish after reply 1 alone.
+function isMatometaNewsUrl(url){
+  try{
+    const host=new URL(url).hostname.toLowerCase().replace(/^www\./,'');
+    return host==='matometanews.com';
+  }catch{return false;}
+}
+function makeMatometaNewsBodyBundle(doc,title=''){
+  if(!doc?.body)return null;
+  let titleNode=null;
+  for(const el of doc.querySelectorAll('h1,h2,h3,.article-title,.entry-title,.post-title')){
+    if(title && sameTitle(cleanText(el.textContent||''),title)){titleNode=el;break;}
+  }
+  const article=titleNode?.closest?.('article,.hentry,.article-outer,.entry,.post,.entry-outer');
+  const scopes=[article,doc.querySelector('#main'),doc.querySelector('main'),doc.body].filter(Boolean);
+  const selector='.article-body-inner,#article-body-inner,.article-body-more,#article-body-more,.articleBody,.article-body,[itemprop="articleBody"]';
+  const seen=new Set();
+  for(const scope of scopes){
+    if(seen.has(scope))continue;seen.add(scope);
+    let blocks=[...scope.querySelectorAll(selector)].filter(el=>
+      !el.closest?.('aside,nav,footer,#comments,.comment-list,.comments,[class*="ranking"],[class*="recommend"]'));
+    // A parent .article-body already includes all its descendants. Keep
+    // sibling inner/more blocks, but never clone the same reply twice.
+    blocks=blocks.filter(el=>!blocks.some(other=>other!==el&&other.contains(el)));
+    if(!blocks.length)continue;
+    blocks.sort((a,b)=>(a.compareDocumentPosition(b)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);
+    const wrap=doc.createElement('div');wrap.dataset.matometanewsBodyBundle='1';
+    // The article's headline photo can be a sibling before body-inner.
+    // Keep it, but not ad/side images or media already inside a body block.
+    const lead=[...scope.querySelectorAll('img')].reverse().find(img=>
+      !blocks.some(block=>block.contains(img)) &&
+      !!(img.compareDocumentPosition(blocks[0])&Node.DOCUMENT_POSITION_FOLLOWING) &&
+      likelyArticleImage(img));
+    if(lead){const keep=cloneLeadImageWithLink(lead);if(keep)wrap.append(keep);}
+    for(const block of blocks)wrap.append(block.cloneNode(true));
+    const source=Math.max(simpleReplyCount(wrap),threadHeaderCount(wrap));
+    // Do not lock a site body that actually only contains an image or a
+    // link list; fallback selection is better when no real thread is found.
+    if(source>=2){
+      wrap.dataset.matometanewsSourceReplies=String(source);
+      return wrap;
+    }
+  }
+  // Earlier/newer templates use one .t_h and one .t_b per reply.
+  const paired=makeLivedoorThreadPairBundle(doc,title,'matometanews');
+  const pairedCount=paired?Math.max(simpleReplyCount(paired),threadHeaderCount(paired)):0;
+  if(pairedCount>=2){
+    paired.dataset.matometanewsBodyBundle='1';
+    paired.dataset.matometanewsSourceReplies=String(pairedCount);
+    return paired;
+  }
+  return null;
+}
+
 function chooseBestPreparedContent(doc, baseUrl, title, primaryRoot, preferPrimary=false, primaryIsTitle=false) {
   // サイト専用rootは信頼度が高い。ただし「リンク一覧だけ」の箱は即採用しない。
   if (preferPrimary && primaryRoot) {
@@ -6817,15 +6875,16 @@ async function extractArticle() {
   const jinBundleRoot = isJin115Url(finalUrl) ? makeJin115BodyBundle(doc) : null;
   const jinMarkerRoot = (!jinBundleRoot && isJin115Url(finalUrl)) ? pickJin115ArticleRoot(doc, finalUrl) : null;
   const jinRoot = jinBundleRoot || jinMarkerRoot;
+  const matometaRoot = isMatometaNewsUrl(finalUrl) ? makeMatometaNewsBodyBundle(doc,title) : null;
   const titleRoot = findTitleAnchoredArticleRoot(doc, title);
-  const root = vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot || titleRoot || pickArticleRoot(doc);
+  const root = matometaRoot || vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot || titleRoot || pickArticleRoot(doc);
   // When a site exposes explicit reply blocks, do not fall back to a generic page-wide
   // candidate after we have found them.  That fallback was what reintroduced sidebars,
   // Amazon and livedoor Blog chrome on some Konoyubi/World-Fusigi articles.
-  const lockedSiteRoot = !!(vipperRoot?.dataset?.vipperOreBodyBundle || itaiRoot?.dataset?.itaiNewsBodyBundle || itsokuRoot?.dataset?.itsokuBodyBundle || esuteruRoot?.dataset?.esuteruBodyBundle || gossipRoot?.dataset?.gossip1BodyBundle || hamusokuRoot?.dataset?.replyDenseSiteBundle || fesokuRoot?.dataset?.replyDenseSiteBundle || nanjPrideRoot?.dataset?.replyDenseSiteBundle || konoRoot?.dataset?.konoyubiReplies || ushiRoot?.dataset?.livedoorThreadBundle || worldRoot?.dataset?.livedoorThreadBundle || (isRabbitSokuhoUrl(finalUrl) && rabbitRoot) || alfBundleRoot?.dataset?.alfalfalfaBodyBundle || (isJin115Url(finalUrl) && !!jinRoot));
+  const lockedSiteRoot = !!(matometaRoot?.dataset?.matometanewsBodyBundle || vipperRoot?.dataset?.vipperOreBodyBundle || itaiRoot?.dataset?.itaiNewsBodyBundle || itsokuRoot?.dataset?.itsokuBodyBundle || esuteruRoot?.dataset?.esuteruBodyBundle || gossipRoot?.dataset?.gossip1BodyBundle || hamusokuRoot?.dataset?.replyDenseSiteBundle || fesokuRoot?.dataset?.replyDenseSiteBundle || nanjPrideRoot?.dataset?.replyDenseSiteBundle || konoRoot?.dataset?.konoyubiReplies || ushiRoot?.dataset?.livedoorThreadBundle || worldRoot?.dataset?.livedoorThreadBundle || (isRabbitSokuhoUrl(finalUrl) && rabbitRoot) || alfBundleRoot?.dataset?.alfalfalfaBodyBundle || (isJin115Url(finalUrl) && !!jinRoot));
   let best = lockedSiteRoot ? prepareCandidate(root, finalUrl, title) : chooseBestPreparedContent(
     doc, finalUrl, title, root,
-    !!(vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot),
+    !!(matometaRoot || vipperRoot || itaiRoot || itsokuRoot || esuteruRoot || gossipRoot || hamusokuRoot || fesokuRoot || nanjPrideRoot || ushiRoot || worldRoot || alfRoot || konoRoot || rabbitRoot || jinRoot),
     !!titleRoot && root === titleRoot
   );
   // General safety net: if the selected box is suspiciously thin while the raw page clearly has
@@ -6841,6 +6900,16 @@ async function extractArticle() {
     }
   }
   if (!best) throw new Error("本文を見つけられませんでした。");
+
+  // Once the complete source thread was found, never mark a reply-1-only
+  // extraction ready. Preserve the pre-normalization count for later auditing.
+  if(matometaRoot){
+    const expected=Number(matometaRoot.dataset.matometanewsSourceReplies||0);
+    best.dataset.matometanewsSourceReplies=String(expected);
+    best.dataset.matometanewsPreparedReplies=String(Math.max(simpleReplyCount(best),threadHeaderCount(best)));
+    if(PREPARING && expected>=2 && Number(best.dataset.matometanewsPreparedReplies)<expected)
+      throw new Error('まとめたニュースの後続レスが本文抽出中に欠落しました。再準備します。');
+  }
 
   // v0.1.139: keep Alfalfalfa extraction diagnostics through snapshot creation.
   if (isAlfalfalfaUrl(finalUrl)) {
@@ -6873,6 +6942,7 @@ async function extractArticle() {
     'gossipCommentMarker','gossipCommentRoots','gossipCommentPrimary','gossipCommentMarkerItems','gossipCommentExpected','gossipCommentAppended',
     'gossipBodySource','gossipBodyPrepared',
     'alfalfaBodySource','alfalfaBodyBundle','alfalfaBodyMode','alfalfaBodyPrepared',
+    'matometanewsSourceReplies','matometanewsPreparedReplies',
     'esuteruCommentExpected','esuteruCommentPrimary','esuteruCommentFallback','esuteruCommentAppended','esuteruCommentFetchPages','esuteruCommentFetchErrors','esuteruCommentFetchBytes','esuteruCommentLoose','esuteruCommentFetchErrorDetails'
   ]) {
     if (best.dataset?.[k] != null) contentEl.dataset[k]=best.dataset[k];
@@ -6952,6 +7022,13 @@ async function extractArticle() {
     if(!final.present || (source.images>0 && final.images===0 && !final.x) ||
        (source.video && !final.video) || (source.x && !final.x))
       throw new Error('レス1の本文・画像・動画が失われました。再準備します。');
+  }
+  if(PREPARING && isMatometaNewsUrl(finalUrl)){
+    const expected=Number(contentEl.dataset.matometanewsSourceReplies||0);
+    const finalReplies=Math.max(simpleReplyCount(contentEl),threadHeaderCount(contentEl));
+    contentEl.dataset.matometanewsFinalReplies=String(finalReplies);
+    if(expected>=2 && finalReplies<expected)
+      throw new Error('まとめたニュースの後続レスが整形で消えました。保存せず再準備します。');
   }
   if (!PREPARING) { try { hydrateGenericXEmbeds(contentEl, finalUrl); } catch {} }
   if (PREPARING) return await prepareSnapshot({title,finalUrl,date,

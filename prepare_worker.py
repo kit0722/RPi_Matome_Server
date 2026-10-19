@@ -910,6 +910,11 @@ def _prepare_claimed_job(browser, job):
         payload={'url':str(job.get('link') or ''),'source':str(job.get('source') or '')}
         payload.update({k:int(bstats.get(k) or 0) for k in ('source','prepared','final')})
         print('GOSSIP_BODY '+json.dumps(payload,ensure_ascii=False,separators=(',',':')),flush=True)
+    mstats=snapshot.get('reply_stats')
+    if isinstance(mstats,dict) and mstats.get('kind')=='matometanews':
+        payload={'url':str(job.get('link') or ''),'source':str(job.get('source') or '')}
+        payload.update({k:int(mstats.get(k) or 0) for k in ('source','prepared','final')})
+        print('MATOMETA_REPLIES '+json.dumps(payload,ensure_ascii=False,separators=(',',':')),flush=True)
     astats=snapshot.get('alfalfa_body_stats')
     if isinstance(astats,dict) and astats.get('kind')=='alfalfalfa':
         payload={'url':str(job.get('link') or ''),'source':str(job.get('source') or ''),'mode':str(astats.get('mode') or '')}

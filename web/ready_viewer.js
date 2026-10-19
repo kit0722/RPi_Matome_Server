@@ -1500,6 +1500,37 @@ function maybeRepairRequiredReplyMedia(article) {
   return false;
 }
 
+// A missing reply #2+ is independent of X image repair. Count only
+// forum-style reply headers, not article/site comment counters.
+function matometanewsVisibleReplyCount(root) {
+  if(!root)return 0;
+  const raw=String(root.innerText||root.textContent||'').replace(/\u00a0/g,' ');
+  const lines=(raw.match(/(?:^|\n)\s*(?:>>\s*)?\d{1,5}\s*(?:[：:](?!\d)|名前\s*[：:])/gm)||[]).length;
+  const headers=root.querySelectorAll?.('.reply-meta,.mobile-thread-meta,.t_h,.resHeader')?.length||0;
+  return Math.max(lines,headers);
+}
+function maybeRepairMatometanewsReplies(article){
+  let host='';try{host=new URL(article?.original_url||requestedUrl||'').hostname.toLowerCase().replace(/^www\./,'');}catch{}
+  if(host!=='matometanews.com')return false;
+  const actual=matometanewsVisibleReplyCount(contentEl);
+  const source=Number(article?.reply_stats?.source||0);
+  const hasThreadLink=/(?:転載元スレッド|転送元スレッド)/.test(contentEl.textContent||'') ||
+    !!contentEl.querySelector('a[href*="/test/read.cgi/"]');
+  // New snapshots know exact source count; legacy snapshots can still
+  // self-repair when they show only reply 1 and a forum source link.
+  if(!(source>=2 && actual<source) && !(source===0 && actual<=1 && hasThreadLink))return false;
+  const key='matome_matometanews_reply_repair_v260:'+encodeURIComponent(requestedUrl||'');
+  const now=Date.now(),revision=String(article?.revision||article?.ready_time||'');
+  let last={};
+  try{last=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{}
+  if(last.revision===revision && now-Number(last.at||0)<24*60*60*1000)return false;
+  try{localStorage.setItem(key,JSON.stringify({revision,at:now}));}catch{}
+  fetch('/api/reprepare',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({url:requestedUrl})})
+    .then(res=>res.ok?pollPreparedRevision(revision):null).catch(()=>{});
+  return false;
+}
+
 // v0.1.71: older snapshots may contain reply marker 1 but lose the actual reply-1 payload
 // (Imgur / Instagram / X / video / quote / URL).  Detect only that narrow symptom and queue
 // this one article for rebuild; never rebuild the whole 500-item set.
@@ -2064,6 +2095,16 @@ async function loadPreparedArticle() {
     }
   }
   contentEl.replaceChildren(template.content.cloneNode(true));
+  // Protect all already-stored MatometaNews forum replies before generic
+  // display cleanup (which otherwise can prune reply blocks).
+  let matometaDisplayBackup=null,matometaDisplayCount=0;
+  try{
+    const host=new URL(requestedUrl||article.original_url||'').hostname.toLowerCase().replace(/^www\./,'');
+    if(host==='matometanews.com'){
+      matometaDisplayCount=matometanewsVisibleReplyCount(contentEl);
+      if(matometaDisplayCount>=2)matometaDisplayBackup=contentEl.cloneNode(true);
+    }
+  }catch{}
   // v0.1.138: capture Esuteru prepared comments BEFORE the very first display normalizer.
   // v0.1.138 backed them up after normalize2chCopipeDisplay(), so articles that were
   // collapsed from hundreds/thousands of prepared cards to one card could only restore
@@ -2233,6 +2274,12 @@ async function loadPreparedArticle() {
       console.info('ESUTERU_STRUCTURED_DISPLAY',JSON.stringify({url:requestedUrl,records:article.site_feedback.length,rendered:section.querySelectorAll('.site-feedback-card').length}));
     }
   }catch{}
+  // Restore complete saved forum replies if normalization deleted any of them.
+  if(matometaDisplayBackup && matometanewsVisibleReplyCount(contentEl)<matometaDisplayCount){
+    contentEl.replaceChildren(...[...matometaDisplayBackup.childNodes].map(n=>n.cloneNode(true)));
+    console.info('MATOMETA_DISPLAY_RESTORED',JSON.stringify({
+      url:requestedUrl,stored:matometaDisplayCount,final:matometanewsVisibleReplyCount(contentEl)}));
+  }
   // Final pass also covers content restored by integrity guards and structured comments appended above.
   normalizeReaderTextSizing(contentEl);
   normalizeReaderArticleSpacing(contentEl);
@@ -2243,6 +2290,7 @@ async function loadPreparedArticle() {
   if (!PREPARING) setTimeout(protectReaderPosition, 460);
   if(maybeRefreshUshi32Prepared(article))return;
   maybeRefreshMissingFirstReply(article);
+  maybeRepairMatometanewsReplies(article);
   maybeRepairRequiredReplyMedia(article);
   maybeRepairMissingXCardPreview(article);
   maybeRefreshProviderPrepared(article);

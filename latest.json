@@ -1,6 +1,6 @@
 {
-  "version": "0.1.259",
-  "build": 259,
+  "version": "0.1.260",
+  "build": 260,
   "update_mode": "repository-source",
   "branch": "main",
   "repository": "kit0722/RPi_Matome_Server",
