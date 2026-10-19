@@ -27,7 +27,7 @@ class CrossSiteVideoTests(unittest.TestCase):
         reader=(ROOT/'web/reader.html').read_text(encoding='utf-8')
         prep=(ROOT/'web/prepare.html').read_text(encoding='utf-8')
         update=(ROOT/'UPDATE_ONLY.sh').read_text(encoding='utf-8')
-        for marker in ('reader.css?v=0305','ready_viewer.js?v=0308'):
+        for marker in ('reader.css?v=0305','ready_viewer.js?v=0309'):
             self.assertIn(marker,reader)
             self.assertIn(marker,update)
         self.assertIn('prepare_snapshot.js?v=0282',prep)

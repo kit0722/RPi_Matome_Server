@@ -98,11 +98,19 @@ async function prepareXPosts(root, warnings=[]) {
     meta.textContent=[handle,date].filter(Boolean).join(' · ');
     const body=document.createElement('p');body.className='x-static-text';body.textContent=tweet.text;
     card.append(author);if(meta.textContent)card.append(meta);card.append(body);
-    const details=tweet.mediaDetails || [];
+    const details=(Array.isArray(tweet.mediaDetails)&&tweet.mediaDetails.length)?tweet.mediaDetails:
+      ((tweet.extended_entities?.media?.length && tweet.extended_entities.media)||
+       (tweet.entities?.media?.length && tweet.entities.media)||[]);
     for (const media of details) {
       if (media.type==='photo') {
         try { const img=document.createElement('img');img.src=await prepareAsset(media.media_url_https);if(required)img.dataset.requiredMedia='1';card.append(img); }
-        catch { const miss=document.createElement('a');miss.className='prepared-image-fallback';miss.href=media.media_url_https||card.dataset.xStaticUrl;miss.target='_blank';miss.rel='noopener noreferrer';miss.textContent='X画像を取得できません（元投稿を開く）';card.append(miss); }
+        catch (error) {
+          warnings.push({media_type:'x-image',failed_url:media.media_url_https||card.dataset.xStaticUrl,
+            required_reply:required,reason:String(error?.message||error),completed:!required});
+          const miss=document.createElement('a');miss.className='prepared-image-fallback';
+          miss.href=media.media_url_https||card.dataset.xStaticUrl;miss.target='_blank';miss.rel='noopener noreferrer';
+          miss.textContent='X画像を取得できません（元投稿を開く）';card.append(miss);
+        }
       } else if (media.type==='video' || media.type==='animated_gif') {
         const variants=media.video_info?.variants || tweet.video?.variants || [];
         const variant=variants.filter(v=> /mp4/i.test(v.content_type || v.type || v.src || v.url || '')).sort((a,b)=>(b.bitrate||0)-(a.bitrate||0))[0];
@@ -115,7 +123,16 @@ async function prepareXPosts(root, warnings=[]) {
       } else throw new Error('未対応のXメディアが含まれています');
     }
     if (!details.length) {
-      for (const photo of tweet.photos || []) {try{const img=document.createElement('img');img.src=await prepareAsset(photo.url);if(required)img.dataset.requiredMedia='1';card.append(img);}catch{const miss=document.createElement('a');miss.className='prepared-image-fallback';miss.href=photo.url||card.dataset.xStaticUrl;miss.target='_blank';miss.rel='noopener noreferrer';miss.textContent='X画像を取得できません（元投稿を開く）';card.append(miss);}}
+      for (const photo of tweet.photos || []) {
+        try {const img=document.createElement('img');img.src=await prepareAsset(photo.url);if(required)img.dataset.requiredMedia='1';card.append(img);}
+        catch(error) {
+          warnings.push({media_type:'x-image',failed_url:photo.url||card.dataset.xStaticUrl,
+            required_reply:required,reason:String(error?.message||error),completed:!required});
+          const miss=document.createElement('a');miss.className='prepared-image-fallback';
+          miss.href=photo.url||card.dataset.xStaticUrl;miss.target='_blank';miss.rel='noopener noreferrer';
+          miss.textContent='X画像を取得できません（元投稿を開く）';card.append(miss);
+        }
+      }
       if (tweet.video) {
         const video=document.createElement('video');video.dataset.tweetId=tweet.id_str;
         const fallbackVariant=(tweet.video.variants||[]).find(v=>/mp4/i.test(v.type||v.content_type||v.src||v.url||''));
@@ -143,7 +160,8 @@ async function prepareXPosts(root, warnings=[]) {
       const articleText=cleanText(root.textContent||'').length;
       const otherMedia=root.querySelectorAll('img,video,iframe,blockquote,.x-static-card,.instagram-static-card').length;
       if(required && articleText<60 && otherMedia<=1) throw new Error('レス1のX投稿を取得できません: '+id);
-      warnings.push({media_type:'x',failed_url:`https://x.com/i/status/${id}`,reason:String(e?.message||e),completed:true});
+      warnings.push({media_type:'x',failed_url:`https://x.com/i/status/${id}`,required_reply:required,
+        reason:String(e?.message||e),completed:!required});
       // A temporarily unavailable X post must not block publication when useful body/other media remains.
       card=document.createElement('div');card.className='x-static-card x-static-fallback';card.dataset.xStaticUrl=`https://x.com/i/status/${id}`;
       const original=[...blocks].find(el=>el?.isConnected) || [...blocks][0] || null;
@@ -395,10 +413,13 @@ async function prepareSnapshot(info) {
       const raw=String(candidates[0]||img.getAttribute('src')||'').trim();
       const textLen=cleanText(root.textContent||'').length;
       const otherMedia=[...root.querySelectorAll('img,video,iframe,blockquote,.x-static-card,.instagram-static-card')].filter(x=>x!==img).length;
+      const firstReplyMedia=required && !!img.closest?.('[data-required-reply="1"]');
+      if(firstReplyMedia && !raw) throw new Error('レス1の画像URLを取得できません');
       if(required && textLen<60 && otherMedia===0){
         throw new Error('重要画像を取得できません'+(raw?': '+raw:''));
       }
-      if(required) warnings.push({media_type:'image',failed_url:raw,reason:String(lastError?.message||lastError||'取得失敗'),completed:true});
+      if(required) warnings.push({media_type:'image',failed_url:raw,required_reply:firstReplyMedia,
+        reason:String(lastError?.message||lastError||'取得失敗'),completed:!firstReplyMedia});
       // Keep the article publishable when one image fails and useful body/other media remains.
       // Semantic images in reply #1 / image-only replies are handled above and stay retryable.
       const fallback=document.createElement(raw?'a':'span');
@@ -431,7 +452,6 @@ async function prepareSnapshot(info) {
     const sources=videoSourceUrls(media);
     const url=sources[0] || '';
     const requiredVideo=media.dataset.requiredMedia==='1' || !!media.closest('[data-required-reply="1"]');
-    if(requiredVideo && !url) throw new Error('レス1の動画URLを取得できません');
     const key=preparedVideoKey(url) || (media.dataset.tweetId?('tweet:'+media.dataset.tweetId+':'+(media.dataset.mediaId||'video')):'unknown:'+preparedVideos.length);
     let poster='';
     const originalPoster=media.dataset.videoPoster || media.getAttribute('poster') || '';
@@ -439,6 +459,12 @@ async function prepareSnapshot(info) {
     const nearby=media.closest('.x-static-card')?.dataset.xStaticUrl || '';
     const ids=[...new Set([...root.querySelectorAll('a[href]')].map(a=>xStatusId(a.href)).filter(Boolean))];
     const tweetId=media.dataset.tweetId || xStatusId(nearby) || (ids.length===1?ids[0]:'');
+    // An X post link is a usable recovery path even when no direct MP4 variant
+    // exists. Non-X required videos with no source still need retrying.
+    if(requiredVideo && !url && !tweetId) throw new Error('レス1の動画URLを取得できません');
+    if(requiredVideo && !url && tweetId)
+      warnings.push({media_type:'x-video',failed_url:'https://x.com/i/status/'+tweetId,
+        required_reply:true,reason:'X動画のMP4リンクを取得できませんでした',completed:false});
     const record={key,url,urls:sources,poster,source_page:info.finalUrl,
       tweet_id:tweetId,tweet_token:tweetId?((Number(tweetId)/1e15)*Math.PI).toString(36).replace(/(0+|\.)/g,''):'',
       media_id:media.dataset.mediaId || '',kind:media.tagName.toLowerCase()};

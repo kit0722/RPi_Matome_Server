@@ -1459,6 +1459,24 @@ function maybeRefreshProviderPrepared(article){
 }
 
 
+// v0.1.257: An X/photo fallback is usable, but not a genuinely complete reply-1 media
+// snapshot. Retry just this article periodically, without evicting the old body.
+function maybeRepairRequiredReplyMedia(article) {
+  const damaged=(article?.warnings||[]).filter(w=>w?.required_reply===true&&w?.completed===false);
+  if(!damaged.length)return false;
+  const now=Date.now(), revision=String(article?.revision||article?.ready_time||'');
+  const key='matome_reply1_media_repair_v257:'+encodeURIComponent(requestedUrl||'');
+  let previous={};
+  try {previous=JSON.parse(localStorage.getItem(key)||'{}')||{};}catch{}
+  if(previous.revision===revision && now-Number(previous.at||0)<6*60*60*1000)return false;
+  try {localStorage.setItem(key,JSON.stringify({revision,at:now}));}catch{}
+  fetch('/api/reprepare',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({url:requestedUrl})})
+    .then(response=>response.ok?pollPreparedRevision(revision):null)
+    .catch(()=>{});
+  return false;
+}
+
 // v0.1.71: older snapshots may contain reply marker 1 but lose the actual reply-1 payload
 // (Imgur / Instagram / X / video / quote / URL).  Detect only that narrow symptom and queue
 // this one article for rebuild; never rebuild the whole 500-item set.
@@ -1470,17 +1488,27 @@ function maybeRefreshMissingFirstReply(article){
     if(m)return Number(m[1]);m=t.match(/^(?:>>\s*)?(\d{1,5})\s*$/);return m?Number(m[1]):null;
   };
   const markers=els.filter(el=>{const n=markerInfo(el);if(n==null)return false;return ![...el.children].some(ch=>markerInfo(ch)!=null);});
-  const first=markers.find(el=>markerInfo(el)===1);if(!first)return false;
-  const i=markers.indexOf(first);const second=markers.slice(i+1).find(el=>markerInfo(el)===2 && !!(first.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING));
-  if(!second)return false;
-  let text='',media=0;
-  try{
-    const r=document.createRange();r.setStartBefore(first);r.setEndBefore(second);const frag=r.cloneContents();
-    text=clean(frag.textContent).replace(/^(?:>>\s*)?1\s*[：:]?\s*/,'').trim();
-    media=frag.querySelectorAll('img,picture,video,audio,iframe,blockquote,a[href],.prepared-video,.youtube-inline-card,.x-static-card,.instagram-static-card,[data-instagram-post-url]').length;
-  }catch{return false;}
-  const title=String(article?.title||'');
-  const suspicious=media===0 && (text.length<=4 || (/[【\[]?(?:画像|動画)[】\]]?/i.test(title) && text.length<=16));
+  const first=markers.find(el=>markerInfo(el)===1)||null;
+  const second=markers.find(el=>markerInfo(el)===2)||null;
+  let suspicious=false;
+  if(!first){
+    // Old cached articles can start at reply 2 with reply 1 missing entirely.
+    // Only call for repair if a numbered thread (2,3) is actually present.
+    if(!second||!markers.some(el=>markerInfo(el)===3 && !!(second.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING)))return false;
+    suspicious=true;
+  }else{
+    const i=markers.indexOf(first);
+    const next=markers.slice(i+1).find(el=>markerInfo(el)===2 && !!(first.compareDocumentPosition(el)&Node.DOCUMENT_POSITION_FOLLOWING));
+    if(!next)return false;
+    let text='',media=0;
+    try{
+      const r=document.createRange();r.setStartBefore(first);r.setEndBefore(next);const frag=r.cloneContents();
+      text=clean(frag.textContent).replace(/^(?:>>\s*)?1\s*[：:]?\s*/,'').trim();
+      media=frag.querySelectorAll('img,picture,video,audio,iframe,blockquote,a[href],.prepared-video,.youtube-inline-card,.x-static-card,.instagram-static-card,[data-instagram-post-url]').length;
+    }catch{return false;}
+    const title=String(article?.title||'');
+    suspicious=media===0 && (text.length<=4 || (/[【\[]?(?:画像|動画)[】\]]?/i.test(title) && text.length<=16));
+  }
   if(!suspicious)return false;
   const key='matome_reply1_guard_v169:'+encodeURIComponent(requestedUrl||'');
   const generation=String(article?.revision||article?.ready_time||requestedRevision||'legacy');
@@ -1599,8 +1627,23 @@ function dedupePreparedMediaDisplay(root){
     const raw=card.dataset?.instagramPostUrl||card.getAttribute?.('data-instgrm-permalink')||card.querySelector?.('a[href*="instagram.com/"]')?.href||'';const id=card.dataset?.instagramPostId||(((raw.match(/\/(?:p|reel|tv)\/([^/]+)/i)||[])[1]))||'';
     if(!id)continue;if(iseen.has(id)){card.remove();continue;}iseen.add(id);
   }
-  const seen=new Set();const preferred=[...root.querySelectorAll('.x-static-card img,.instagram-static-card img,[data-instagram-post-url] img')];const pset=new Set(preferred);const imgs=[...preferred,...[...root.querySelectorAll('img')].filter(img=>!pset.has(img))];
-  for(const img of imgs){if(!img.isConnected)continue;const raw=img.getAttribute('data-original')||img.getAttribute('data-src')||img.currentSrc||img.src||img.getAttribute('src')||'';const key=canonicalDisplayMediaKey(raw);if(!key)continue;if(seen.has(key)){img.remove();continue;}seen.add(key);}
+  // Don't remove the same photo from separate comments; preserve reply #1 first.
+  const seen=new Set(),scopes=new WeakMap();let nextScope=0;
+  const scopeKey=img=>{
+    const owner=img.closest?.('[data-required-reply="1"],[data-gossip-reply-unit],.resHtml,.resBody,.t_b,.site-feedback-card');
+    if(!owner)return 'article';
+    if(!scopes.has(owner))scopes.set(owner,++nextScope);
+    return String(scopes.get(owner));
+  };
+  const first=[...root.querySelectorAll('[data-required-reply="1"] img,img[data-required-media="1"]')];
+  const preferred=[...first,...root.querySelectorAll('.x-static-card img,.instagram-static-card img,[data-instagram-post-url] img')];
+  const pset=new Set(preferred),imgs=[...new Set([...preferred,...[...root.querySelectorAll('img')].filter(img=>!pset.has(img))])];
+  for(const img of imgs){
+    if(!img.isConnected)continue;
+    const raw=img.getAttribute('data-original')||img.getAttribute('data-src')||img.currentSrc||img.src||img.getAttribute('src')||'';
+    const key=canonicalDisplayMediaKey(raw);if(!key)continue;
+    const scoped=scopeKey(img)+'|'+key;if(seen.has(scoped)){img.remove();continue;}seen.add(scoped);
+  }
   const imgurImageKeys=new Set([...root.querySelectorAll('img')].map(img=>canonicalDisplayMediaKey(img.getAttribute('data-original')||img.getAttribute('data-src')||img.currentSrc||img.src||img.getAttribute('src')||'')).filter(k=>k.startsWith('imgur:')));
   for(const a of [...root.querySelectorAll('a[href]')]){if(a.querySelector('img'))continue;const key=canonicalDisplayMediaKey(a.getAttribute('href')||'');if(!key.startsWith('imgur:')||!imgurImageKeys.has(key))continue;const t=String(a.textContent||'').replace(/\s+/g,' ').trim();if(!t||/^https?:\/\//i.test(t)||/^(?:Imgur画像|View post on imgur\.com)$/i.test(t))a.remove();}
 }
@@ -2177,6 +2220,7 @@ async function loadPreparedArticle() {
   if (!PREPARING) setTimeout(protectReaderPosition, 460);
   if(maybeRefreshUshi32Prepared(article))return;
   maybeRefreshMissingFirstReply(article);
+  maybeRepairRequiredReplyMedia(article);
   maybeRefreshProviderPrepared(article);
   maybeRefreshSiteProfileNow(article);
   maybeRefreshLateSiteComments(article);

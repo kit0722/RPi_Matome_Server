@@ -6431,13 +6431,26 @@ function dedupeArticleMedia(root){
     if(!id)continue;if(iseen.has(id)){card.remove();continue;}iseen.add(id);
   }
   // Prefer images inside X/Instagram cards; standalone duplicate images are removed.
-  const seen=new Set();
-  const preferred=[...root.querySelectorAll('.x-static-card img,.instagram-static-card img,[data-instagram-post-url] img')];
+  // A repeated photo in a DIFFERENT reply is intentional content, not a duplicate.
+  // Never let a later card/lead image steal the first reply's media.
+  const seen=new Set(), replyScopes=new WeakMap();
+  let nextScope=0;
+  const replyKey=img=>{
+    const scope=img.closest?.('[data-required-reply="1"],[data-gossip-reply-unit],.resHtml,.resBody,.t_b,.site-feedback-card');
+    if(!scope)return 'article';
+    if(!replyScopes.has(scope))replyScopes.set(scope,++nextScope);
+    return String(replyScopes.get(scope));
+  };
+  const firstImgs=[...root.querySelectorAll('[data-required-reply="1"] img,img[data-required-media="1"]')];
+  const preferred=[...firstImgs,...root.querySelectorAll('.x-static-card img,.instagram-static-card img,[data-instagram-post-url] img')];
   const pset=new Set(preferred);
-  const imgs=[...preferred,...[...root.querySelectorAll('img')].filter(img=>!pset.has(img))];
+  const imgs=[...new Set([...preferred,...[...root.querySelectorAll('img')].filter(img=>!pset.has(img))])];
   for(const img of imgs){
-    if(!img.isConnected)continue;const raw=img.getAttribute('data-original')||img.getAttribute('data-src')||img.currentSrc||img.src||img.getAttribute('src')||'';const key=canonicalMediaKey(raw);if(!key)continue;
-    if(seen.has(key)){img.remove();continue;}seen.add(key);
+    if(!img.isConnected)continue;
+    const raw=img.getAttribute('data-original')||img.getAttribute('data-src')||img.currentSrc||img.src||img.getAttribute('src')||'';
+    const key=canonicalMediaKey(raw);if(!key)continue;
+    const scoped=replyKey(img)+'|'+key;
+    if(seen.has(scoped)){img.remove();continue;}seen.add(scoped);
   }
   // Imgur page-link + resolved/direct image: once the image exists, keep the image and drop the redundant page link.
   const imgurImageKeys=new Set([...root.querySelectorAll('img')].map(img=>canonicalMediaKey(img.getAttribute('data-original')||img.getAttribute('data-src')||img.currentSrc||img.src||img.getAttribute('src')||'')).filter(k=>k.startsWith('imgur:')));
@@ -6842,10 +6855,14 @@ async function extractArticle() {
 
   // v0.1.71: Candidate selection must never be allowed to drop reply #1.
   // Reconstruct it from the raw DOM so Instagram/X/video/image/quote/URL survive together.
+  let protectedRawFirst=null;
   try {
-    const rawFirst=prepareRawFirstReply(doc,titleRoot||doc.body,finalUrl);
-    if(rawFirst && firstReplyNeedsRestore(best,rawFirst)) replacePreparedFirstReply(best,rawFirst);
-  } catch {}
+    protectedRawFirst=prepareRawFirstReply(doc,titleRoot||doc.body,finalUrl);
+    if(protectedRawFirst && firstReplyNeedsRestore(best,protectedRawFirst))
+      replacePreparedFirstReply(best,protectedRawFirst.cloneNode(true));
+  } catch (error) {
+    if(PREPARING && protectedRawFirst) throw new Error('レス1の保護に失敗しました: '+String(error?.message||error));
+  }
 
   // 最速表示: 本文抽出が終わった時点でまず画面へ出す。
   // X/Imgur/GIF/分割ページなどの補完は表示後に行い、初期表示を待たせない。
@@ -6925,6 +6942,17 @@ async function extractArticle() {
   try { expandYouTubeLinks(contentEl); } catch {}
   try { expandDirectVideoLinks(contentEl); removeDuplicateVideoMedia(contentEl); } catch {}
   try { dedupeArticleMedia(contentEl); } catch {}
+  // Run the reply-1 integrity check AFTER page stitching, expansion and dedupe.
+  // Those late steps may remove media that was present at candidate-selection time.
+  if(PREPARING && protectedRawFirst){
+    if(firstReplyNeedsRestore(contentEl,protectedRawFirst))
+      replacePreparedFirstReply(contentEl,protectedRawFirst.cloneNode(true));
+    const source=firstReplyStats(protectedRawFirst);
+    const final=firstReplyStats(contentEl);
+    if(!final.present || (source.images>0 && final.images===0 && !final.x) ||
+       (source.video && !final.video) || (source.x && !final.x))
+      throw new Error('レス1の本文・画像・動画が失われました。再準備します。');
+  }
   if (!PREPARING) { try { hydrateGenericXEmbeds(contentEl, finalUrl); } catch {} }
   if (PREPARING) return await prepareSnapshot({title,finalUrl,date,
     thumb:metaContent(doc,['meta[property="og:image"]','meta[name="twitter:image"]'])});
