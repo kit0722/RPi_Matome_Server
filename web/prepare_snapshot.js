@@ -74,6 +74,96 @@ async function prepareInstagramPosts(root) {
   }
 }
 
+// Keep article/t.co links clickable without injecting remote HTML into prepared articles.
+function fillXTextLinks(node, text, tweet) {
+  const urls=[...(tweet?.entities?.urls||[]),...(tweet?.urls||[])];
+  const expanded=new Map();
+  for(const item of urls){
+    const short=String(item?.url||'');
+    const full=String(item?.expanded_url||item?.expandedUrl||item?.unwound_url||item?.unwoundUrl||'');
+    if(/^https?:\/\//i.test(short)&&/^https?:\/\//i.test(full))expanded.set(short,full);
+  }
+  const source=String(text||'');
+  const pattern=/https?:\/\/[^\s<>"'）】]+/ig;
+  let from=0;
+  for(const match of source.matchAll(pattern)){
+    const index=match.index,raw=match[0].replace(/[.,!?、。]+$/,'');
+    if(index>from)node.append(document.createTextNode(source.slice(from,index)));
+    const link=document.createElement('a');link.href=expanded.get(raw)||raw;
+    link.target='_blank';link.rel='noopener noreferrer';link.textContent=raw;
+    node.append(link);from=index+raw.length;
+  }
+  if(from<source.length)node.append(document.createTextNode(source.slice(from)));
+}
+
+function xCardPreviewCandidates(tweet) {
+  const card=tweet?.card;
+  if(!card||typeof card!=='object')return [];
+  const roots=[card.binding_values,card.bindingValues,card.legacy?.binding_values,
+    card.legacy?.bindingValues,card];
+  const keys=['photo_image_full_size_original','photo_image_original',
+    'thumbnail_image_original','summary_photo_image_original','player_image',
+    'thumbnail_image','summary_photo_image','card_image','image','thumbnail',
+    'photo_image_full_size'];
+  const found=[];
+  const collect=value=>{
+    if(!value)return;
+    const candidates=[typeof value==='string'?value:'',value?.url,value?.image_value?.url,
+      value?.imageValue?.url,value?.media_url_https,value?.image?.url,
+      value?.value?.image_value?.url,value?.value?.imageValue?.url,value?.value?.url];
+    for(const candidate of candidates){
+      if(typeof candidate==='string'&&/^https?:\/\//i.test(candidate)&&!found.includes(candidate))
+        found.push(candidate);
+    }
+  };
+  for(const bindings of roots){
+    if(!bindings)continue;
+    if(Array.isArray(bindings)){
+      for(const binding of bindings){
+        const key=String(binding?.key||binding?.name||'');
+        if(keys.some(k=>key===k||key.startsWith(k+'_')))collect(binding.value||binding);
+      }
+    }else{
+      for(const key of keys)collect(bindings[key]);
+    }
+  }
+  return found;
+}
+
+async function restoreXSourceImages(card,blocks,required,warnings) {
+  // X syndication sometimes returns tweet text but no mediaDetails. The original
+  // extracted embed may still contain the picture. Don't discard that evidence.
+  if(card.querySelector('img,video,.prepared-video'))return;
+  const seen=new Set();
+  for(const block of blocks){
+    if(!block?.querySelectorAll)continue;
+    for(const original of block.querySelectorAll('img')){
+      const raw=original.getAttribute('data-original')||original.getAttribute('data-src')||
+        original.getAttribute('data-lazy-src')||original.getAttribute('src')||'';
+      let source='';
+      try{source=new URL(raw,location.href).href;}catch{}
+      if(!/^https?:\/\//i.test(source)&&!/^\/prepared\/assets\//.test(raw))continue;
+      const label=String(original.className||'')+' '+String(original.alt||'')+' '+source;
+      if(/(?:avatar|profile.image|profile.images|emoji|icon|logo)/i.test(label))continue;
+      const w=Number(original.getAttribute('width')||0),h=Number(original.getAttribute('height')||0);
+      if(w&&h&&w<=72&&h<=72)continue;
+      const key=source||raw;if(seen.has(key))continue;seen.add(key);
+      try{
+        const img=document.createElement('img');img.src=await prepareAsset(raw);
+        img.alt=original.alt||'X投稿画像';if(required)img.dataset.requiredMedia='1';
+        card.append(img);
+      }catch(error){
+        warnings.push({media_type:'x-image',failed_url:key,required_reply:required,
+          reason:String(error?.message||error),completed:!required});
+        const link=document.createElement('a');link.className='prepared-image-fallback';
+        link.href=source||raw;link.target='_blank';link.rel='noopener noreferrer';
+        link.textContent='X画像を開く';card.append(link);
+      }
+      if(seen.size>=4)return;
+    }
+  }
+}
+
 async function prepareXPosts(root, warnings=[]) {
   const targets=new Map();
   for (const el of root.querySelectorAll('iframe[src],a[href],.x-static-card[data-x-static-url],[data-x-embed-preserve="1"]')) {
@@ -96,7 +186,7 @@ async function prepareXPosts(root, warnings=[]) {
     const handle=tweet.user?.screen_name ? '@'+tweet.user.screen_name : '';
     let date=''; try { if(tweet.created_at) date=new Intl.DateTimeFormat('ja-JP',{year:'numeric',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(tweet.created_at)); } catch {}
     meta.textContent=[handle,date].filter(Boolean).join(' · ');
-    const body=document.createElement('p');body.className='x-static-text';body.textContent=tweet.text;
+    const body=document.createElement('p');body.className='x-static-text';fillXTextLinks(body,tweet.text,tweet);
     card.append(author);if(meta.textContent)card.append(meta);card.append(body);
     const details=(Array.isArray(tweet.mediaDetails)&&tweet.mediaDetails.length)?tweet.mediaDetails:
       ((tweet.extended_entities?.media?.length && tweet.extended_entities.media)||
@@ -140,6 +230,20 @@ async function prepareXPosts(root, warnings=[]) {
         video.dataset.videoPoster=tweet.video.poster || '';card.append(video);
       }
     }
+    // Link-preview cards (such as Yahoo News shortlinks) carry pictures
+    // separately from mediaDetails/photos. Save them to the offline archive.
+    if(!card.querySelector('img,video')){
+      for(const preview of xCardPreviewCandidates(tweet).slice(0,2)){
+        try{
+          const img=document.createElement('img');img.src=await prepareAsset(preview);
+          img.alt='リンク先の記事画像';if(required)img.dataset.requiredMedia='1';
+          card.append(img);break;
+        }catch(error){
+          warnings.push({media_type:'x-card-image',failed_url:preview,required_reply:required,
+            reason:String(error?.message||error),completed:!required});
+        }
+      }
+    }
     if (tweet.quoted_tweet) {
       if (depth>=3) throw new Error('X引用の深さを超えました');
       try { card.append(await makeCard(tweet.quoted_tweet,depth+1,false)); } catch { const q=document.createElement('p');q.className='x-static-fallback';q.textContent='引用X投稿の追加情報を取得できませんでした';card.append(q); }
@@ -172,6 +276,7 @@ async function prepareXPosts(root, warnings=[]) {
       card.append(msg);if(note.textContent)card.append(note);card.append(link);
     }
     const existing=[...blocks].filter(el=>el.isConnected);
+    await restoreXSourceImages(card,existing,required,warnings);
     if (existing.length) { existing[0].replaceWith(card); for (const extra of existing.slice(1)) extra.remove(); }
   }
 }

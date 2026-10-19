@@ -1461,6 +1461,29 @@ function maybeRefreshProviderPrepared(article){
 
 // v0.1.257: An X/photo fallback is usable, but not a genuinely complete reply-1 media
 // snapshot. Retry just this article periodically, without evicting the old body.
+// Repair legacy prepared X link cards that contain only text/t.co and no preview.
+// Keep the current saved snapshot visible during one-article re-preparation.
+function maybeRepairMissingXCardPreview(article) {
+  const cards=[...contentEl.querySelectorAll('.x-static-card')];
+  const missing=cards.some(card=>{
+    if(card.querySelector('img,video,.prepared-video,.x-static-media'))return false;
+    const text=String(card.textContent||'');
+    return /https?:\/\/t\.co\/[A-Za-z0-9]+/i.test(text);
+  });
+  if(!missing)return false;
+  const key='matome_x_card_image_repair_v259:'+encodeURIComponent(requestedUrl||'');
+  const now=Date.now();
+  let last=0;
+  try{last=Number(localStorage.getItem(key)||0)}catch{}
+  if(last>now-24*60*60*1000)return false;
+  try{localStorage.setItem(key,String(now))}catch{}
+  fetch('/api/reprepare',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({url:requestedUrl})})
+    .then(response=>response.ok?pollPreparedRevision(String(article?.revision||article?.ready_time||'')):null)
+    .catch(()=>{});
+  return false;
+}
+
 function maybeRepairRequiredReplyMedia(article) {
   const damaged=(article?.warnings||[]).filter(w=>w?.required_reply===true&&w?.completed===false);
   if(!damaged.length)return false;
@@ -2221,6 +2244,7 @@ async function loadPreparedArticle() {
   if(maybeRefreshUshi32Prepared(article))return;
   maybeRefreshMissingFirstReply(article);
   maybeRepairRequiredReplyMedia(article);
+  maybeRepairMissingXCardPreview(article);
   maybeRefreshProviderPrepared(article);
   maybeRefreshSiteProfileNow(article);
   maybeRefreshLateSiteComments(article);

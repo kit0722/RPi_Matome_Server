@@ -1029,3 +1029,17 @@ html.mobile-ui .content {
 /* v0.1.255: non-YouTube video iframe fallback without losing the article. */
 .embedded-video-source{margin:8px 0 12px;max-width:100%;overflow-wrap:anywhere}
 .embedded-video-source a{display:inline-block;text-decoration:underline;font-size:14px}
+
+/* v0.1.259: X link-preview thumbnails stay visible in prepared articles. */
+.content .x-static-card > img,
+.content .x-static-card > a > img {
+  display: block;
+  box-sizing: border-box;
+  width: auto;
+  max-width: 100%;
+  max-height: 480px;
+  object-fit: contain;
+  margin: 8px 0 10px;
+  border-radius: 8px;
+}
+.content .x-static-card .x-static-text a { overflow-wrap: anywhere; }
