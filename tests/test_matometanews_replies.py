@@ -24,7 +24,17 @@ class MatometaNewsReplyIntegrityTests(unittest.TestCase):
         self.assertIn('cloneLeadImageWithLink(lead)',src)
         self.assertIn('if(source>=2)',src)
         self.assertIn('const matometaRoot = isMatometaNewsUrl(finalUrl)',src)
-        self.assertIn('const root = matometaRoot || vipperRoot',src)
+        # Other site-specific roots can be inserted ahead of MatometaNews.
+        # Verify selection priority, not a brittle literal line.
+        suffix=src.split('const matometaRoot = isMatometaNewsUrl(finalUrl)',1)
+        self.assertEqual(len(suffix),2,'site-scoped root declaration missing')
+        root_match=re.search(r'\bconst root\s*=\s*([^;]+);',suffix[1])
+        self.assertIsNotNone(root_match,'article root expression missing')
+        priority=[p.strip() for p in root_match.group(1).split('||')]
+        for item in ('matometaRoot','vipperRoot','pickArticleRoot(doc)'):
+            self.assertIn(item,priority)
+        self.assertLess(priority.index('matometaRoot'),priority.index('vipperRoot'))
+        self.assertLess(priority.index('matometaRoot'),priority.index('pickArticleRoot(doc)'))
         self.assertIn('matometaRoot?.dataset?.matometanewsBodyBundle',src)
 
     def test_missing_responses_prevent_completed_snapshot(self):
