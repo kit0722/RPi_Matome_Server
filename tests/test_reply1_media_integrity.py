@@ -3,6 +3,7 @@
 Runs without network, Pi device state, or downloaded assets.
 """
 import unittest
+import re
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
@@ -55,11 +56,11 @@ class ReplyOneIntegrityTests(unittest.TestCase):
         reader=(ROOT/'web/reader.html').read_text(encoding='utf-8')
         preparer=(ROOT/'web/prepare.html').read_text(encoding='utf-8')
         update=(ROOT/'UPDATE_ONLY.sh').read_text(encoding='utf-8')
-        self.assertIn("ready_viewer.js?v=0309",reader)
-        self.assertIn("reader.js?v=0302",preparer)
-        self.assertIn("prepare_snapshot.js?v=0283",preparer)
-        for marker in ("ready_viewer.js?v=0309","reader.js?v=0302","prepare_snapshot.js?v=0283"):
-            self.assertIn(marker,update)
+        for page,asset in ((reader,'ready_viewer.js'),
+                           (preparer,'reader.js'),(preparer,'prepare_snapshot.js')):
+            found=re.search(r'src="('+re.escape(asset)+r'\?v=\d+)"',page)
+            self.assertIsNotNone(found,asset+' version is missing')
+            self.assertIn(found.group(1),update)
 
 if __name__=='__main__':
     unittest.main()

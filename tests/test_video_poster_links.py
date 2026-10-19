@@ -1,5 +1,6 @@
 """Regression: a poster image linked to a video must not open only the image lightbox."""
 import unittest
+import re
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -28,8 +29,13 @@ class VideoPosterLinkTests(unittest.TestCase):
         prep=(ROOT/'web/prepare.html').read_text(encoding='utf-8')
         legacy=(ROOT/'web/legacy_reader.html').read_text(encoding='utf-8')
         update=(ROOT/'UPDATE_ONLY.sh').read_text(encoding='utf-8')
-        self.assertIn('ready_viewer.js?v=0309',html)
-        self.assertIn('ready_viewer.js?v=0309',update)
-        self.assertIn('ready_reader.js?v=0287',prep)
-        self.assertIn('reader.js?v=0301',prep)
-        self.assertIn('reader.js?v=0301',legacy)
+        # Derive versions from the deployed HTML instead of pinning obsolete ones.
+        viewer=re.search(r'src="(ready_viewer\.js\?v=\d+)"',html)
+        preparer=re.search(r'src="(ready_reader\.js\?v=\d+)"',prep)
+        prep_reader=re.search(r'src="(reader\.js\?v=\d+)"',prep)
+        legacy_reader=re.search(r'src="(reader\.js\?v=\d+)"',legacy)
+        for name,match in (('viewer',viewer),('preparer',preparer),
+                           ('preparation reader',prep_reader),('legacy reader',legacy_reader)):
+            self.assertIsNotNone(match,name+' lacks a versioned script')
+        self.assertIn(viewer.group(1),update)
+        self.assertEqual(prep_reader.group(1),legacy_reader.group(1))

@@ -1,5 +1,6 @@
 """Regression checks for source URLs retained in prepared and saved articles."""
 import unittest
+import re
 from pathlib import Path
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -24,6 +25,7 @@ class VideoFallbackLinkTests(unittest.TestCase):
     def test_release_busts_viewer_cache(self):
         page=(ROOT/'web/reader.html').read_text(encoding='utf-8')
         update=(ROOT/'UPDATE_ONLY.sh').read_text(encoding='utf-8')
-        for marker in ('reader.css?v=0305','ready_viewer.js?v=0309'):
-            self.assertIn(marker,page)
-            self.assertIn(marker,update)
+        for asset in ('reader.css','ready_viewer.js'):
+            found=re.search(r'(?:href|src)="('+re.escape(asset)+r'\?v=\d+)"',page)
+            self.assertIsNotNone(found,asset+' cache-buster missing')
+            self.assertIn(found.group(1),update)
