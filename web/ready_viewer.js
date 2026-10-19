@@ -2217,16 +2217,22 @@ async function loadPreparedArticle() {
     return;
   };
   stripPreparedVideoUrlDuplicates(contentEl,article);
-  // v0.1.114: Xの生MP4リンクが残っている旧/特殊記事も再生UIへ変換する。
+  // Every direct MP4/WebM/M4V link is playable in-article, regardless of source site.
+  // Keep the original hyperlink intact if playback fails. Do not duplicate prepared players.
+  const directPlayers=new Set();
+  const preparedKeys=new Set([...contentEl.querySelectorAll('.prepared-video[data-video-key]')].map(e=>e.dataset.videoKey));
   for(const a of [...contentEl.querySelectorAll('a[href]')]){
     const href=String(a.href||a.getAttribute('href')||'');
-    if(!/https?:\/\/video\.twimg\.com\/[^\s]+\.mp4(?:[?#].*)?$/i.test(href))continue;
-    if(a.nextElementSibling?.matches?.('video.direct-video-preview'))continue;
-    const v=document.createElement('video');v.className='direct-video-preview';v.controls=true;v.preload='metadata';v.setAttribute('playsinline','');v.playsInline=true;
-    // 直CDNではなくPi中継を優先。URL自体はfallbackとしてリンクを残す。
-    const key=(article.videos||[]).find(x=>(x.urls||[]).includes(href)||x.url===href)?.key||'';
+    if(!/^https?:\/\//i.test(href)||!/\.(?:mp4|webm|m4v)(?:$|[?#])/i.test(href))continue;
+    if(a.closest('.prepared-video')||directPlayers.has(href)||a.nextElementSibling?.matches?.('video.direct-video-preview'))continue;
+    const record=(article.videos||[]).find(x=>(x.urls||[]).includes(href)||x.url===href);
+    if(record?.key && preparedKeys.has(record.key))continue;
+    const v=document.createElement('video');v.className='direct-video-preview';
+    v.controls=true;v.preload='none';v.setAttribute('playsinline','');v.playsInline=true;
+    const key=record?.key||'';
     v.src=key?('/api/video-stream?article='+encodeURIComponent(requestedUrl)+'&key='+encodeURIComponent(key)+'&retry='+Date.now()):href;
     a.insertAdjacentElement('afterend',v);
+    directPlayers.add(href);
   }
   for(const card of contentEl.querySelectorAll('.prepared-video[data-video-key]')) {
     const record=(article.videos||[]).find(v=>v.key===card.dataset.videoKey);

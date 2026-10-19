@@ -302,8 +302,33 @@ async function prepareSnapshot(info) {
   }
   for (const frame of [...root.querySelectorAll('iframe')]) {
     const id=youtubeVideoId(frame.getAttribute('src'));
-    if (!id) throw new Error('未整理の埋め込みが残っています');
-    frame.replaceWith(preparedYouTubeCard(id));
+    if(id){frame.replaceWith(preparedYouTubeCard(id));continue;}
+    // A non-YouTube embed must never make a complete article disappear.
+    // Preserve its real HTTPS/HTTP source as a clickable fallback; don't save iframe scripts.
+    let source='';
+    try {
+      const rawSrc=String(frame.getAttribute('src')||'').trim();
+      if(rawSrc) {
+        let parsed=new URL(rawSrc,info.finalUrl||location.href);
+        if(parsed.pathname==='/api/proxy' && parsed.origin===location.origin) {
+          const original=parsed.searchParams.get('url')||'';
+          parsed=original?new URL(original):parsed;
+        }
+        if(['http:','https:'].includes(parsed.protocol) &&
+           !/(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|adservice\.google\.com)$/.test(parsed.hostname))
+          source=parsed.href;
+      }
+    } catch {}
+    if(source) {
+      const card=document.createElement('div');card.className='embedded-video-source';
+      const link=document.createElement('a');link.href=source;
+      link.target='_blank';link.rel='noopener noreferrer';
+      link.textContent='埋め込み動画・外部メディアを開く';card.append(link);
+      frame.replaceWith(card);
+    }else {
+      frame.remove();
+      warnings.push({media_type:'embed',failed_url:'',reason:'URL不明の埋め込みを除外しました',completed:true});
+    }
   }
   expandYouTubeLinks(root);
   removeDuplicateVideoMedia(root);
