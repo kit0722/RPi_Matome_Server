@@ -33,25 +33,21 @@ async function loadPreparedArticle() {
     }
     return out;
   };
-  const stripPreparedVideoUrlDuplicates=(root,article)=>{
-    const known=new Set();
-    for(const rec of article?.videos||[])for(const u of [rec?.url,...(rec?.urls||[])])if(/^https?:\/\//i.test(String(u||'')))known.add(String(u));
-    for(const a of [...root.querySelectorAll('a[href]')]) {
-      const href=a.href||a.getAttribute('href')||'';
-      if(!known.has(href) && ![...known].some(u=>u===href))continue;
-      if(!/\.(?:mp4|webm|m4v)(?:$|[?#])/i.test(href))continue;
-      const wrap=a.closest('p,li,div,span')||a;
-      const text=(wrap.textContent||'').trim();
-      a.remove();
-      if(wrap!==a && !wrap.querySelector('a,img,video,iframe,.prepared-video')) {
-        const left=(wrap.textContent||'').trim();
-        if(!left || /^\d+\s*[:：.-]?$/.test(left) || text===href)wrap.remove();
-      }
-    }
-  };
+  // Keep the raw direct URL even if a prepared player exists.
+  const stripPreparedVideoUrlDuplicates=()=>{};
   stripPreparedVideoUrlDuplicates(contentEl,article);
   for(const card of contentEl.querySelectorAll('.prepared-video[data-video-key]')) {
     const record=(article.videos||[]).find(v=>v.key===card.dataset.videoKey);
+    // Ensure original URL fallback is present even for older article snapshots.
+    const storedVideoUrl=httpVideoCandidates(record)[0] || '';
+    const tweetId=String(record?.tweet_id||'');
+    const sourceUrl=storedVideoUrl || (/^\d{6,}$/.test(tweetId)?'https://x.com/i/status/'+encodeURIComponent(tweetId):'');
+    let sourceLink=card.querySelector('a.prepared-video-source');
+    if(!sourceLink && /^https?:\/\//i.test(sourceUrl)) {
+      sourceLink=document.createElement('a');sourceLink.className='prepared-video-source';
+      sourceLink.href=sourceUrl;sourceLink.target='_blank';sourceLink.rel='noopener noreferrer';
+      sourceLink.textContent=storedVideoUrl?'動画URLを開く':'Xで動画を見る';card.append(sourceLink);
+    }
     if(record?.tweet_id || /^twimg:/.test(record?.key||'')) warmVideoCard(card,record);
     const start=(preferProxy=false)=>{
       warmVideoCard(card,record);
@@ -79,7 +75,7 @@ async function loadPreparedArticle() {
       video.addEventListener('timeupdate',markProgress);
       video.addEventListener('error',fallback);
       video.addEventListener('stalled',()=>{if(!settled)armTimeout(sourceGeneration);});
-      card.replaceChildren(video,retry);
+      card.replaceChildren(video,retry,...(sourceLink?[sourceLink]:[]));
       setSource(usingProxy?proxy:direct[candidateIndex]);
     };
     card.querySelector('button')?.addEventListener('click',()=>start(false),{once:true});

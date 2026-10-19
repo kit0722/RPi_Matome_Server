@@ -11,7 +11,7 @@ class ReaderFontControlsTests(unittest.TestCase):
         html=(ROOT/"web/reader.html").read_text(encoding="utf-8")
         css=(ROOT/"web/reader.css").read_text(encoding="utf-8")
         script=(ROOT/"web/ready_viewer.js").read_text(encoding="utf-8")
-        self.assertIn("reader.css?v=0303",html)
+        self.assertIn("reader.css?v=0304",html)
         self.assertIn('class="reader-font-step reader-font-dec"',html)
         self.assertIn('class="reader-font-step reader-font-inc"',html)
         self.assertIn('applyReaderFont(',script)
@@ -35,7 +35,7 @@ class ReaderFontControlsTests(unittest.TestCase):
         script=(ROOT/"UPDATE_ONLY.sh").read_text(encoding="utf-8")
         self.assertIn('d.get("version")=="'+latest["version"]+'"',script)
         self.assertIn('d.get("build")=='+str(latest["build"]),script)
-        self.assertIn('reader.css?v=0303',script)
+        self.assertIn('reader.css?v=0304',script)
 
     def test_buffer_state_reports_real_stock(self):
         server=(ROOT/"server.py").read_text(encoding="utf-8")

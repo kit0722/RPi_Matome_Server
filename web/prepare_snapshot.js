@@ -422,6 +422,13 @@ async function prepareSnapshot(info) {
     const button=document.createElement('button');button.type='button';button.className='prepared-video-play';
     if(poster){const img=document.createElement('img');img.src=poster;img.alt='動画サムネ';button.append(img);}
     const label=document.createElement('span');label.textContent='▶ 動画を再生';button.append(label);card.append(button);
+    // Source fallback stays clickable when embedded playback or relay fails.
+    const sourceUrl=url || (tweetId ? 'https://x.com/i/status/'+encodeURIComponent(tweetId) : '');
+    if(/^https?:\/\//i.test(sourceUrl)) {
+      const sourceLink=document.createElement('a');sourceLink.className='prepared-video-source';
+      sourceLink.href=sourceUrl;sourceLink.target='_blank';sourceLink.rel='noopener noreferrer';
+      sourceLink.textContent=url?'動画URLを開く':'Xで動画を見る';card.append(sourceLink);
+    }
     media.replaceWith(card);
   }
   for (const source of root.querySelectorAll('picture source')) source.remove();
@@ -508,34 +515,6 @@ function deduplicatePreparedVideos(root) {
     for(const key of keys)byKey.set(key,keep);
     for(const [key,value]of byKey)if(!value.isConnected)byKey.set(key,keep);
   }
-  const fallback=/^(?:※|＊|\*|\s)*(?:(?:動画が?)?(?:見れない|見られない|観れない|再生できない)場合(?:は)?(?:こちら)?|こちら(?:から)?(?:再生|視聴))(?:[。．.:：\s]*)$/;
-  const directVideoLine=/^(?:\d+\s*[:：.-]\s*)?(?:https?:\/\/\S+\.(?:mp4|webm|m4v)(?:\?\S*)?)$/i;
-  for(const a of [...root.querySelectorAll('a[href]')]) {
-    const key=preparedVideoKey(a.href);
-    if(!byKey.has(key))continue;
-    const p=a.parentElement;
-    const parentText=cleanText(p?.textContent||'');
-    if(p && /^(P|SPAN|DIV|LI)$/.test(p.tagName) && !p.querySelector('video,iframe,img') && (fallback.test(parentText) || directVideoLine.test(parentText))) {
-      p.remove();continue;
-    }
-    // Direct source links are redundant once their complete local player exists.
-    if(fallback.test(cleanText(a.textContent)) || /^(?:https?:\/\/\S+|動画|動画はこちら|こちら)$/i.test(cleanText(a.textContent))) {
-      const prev=a.previousSibling;
-      a.remove();
-      if(prev?.nodeType===Node.TEXT_NODE && fallback.test(cleanText(prev.textContent)))prev.remove();
-      const wrap=p;
-      if(wrap && /^(P|SPAN|DIV|LI)$/.test(wrap.tagName)) {
-        const text=cleanText(wrap.textContent||'');
-        if(!wrap.querySelector('a[href],video,iframe,img') && (!text || directVideoLine.test(text) || /^\d+$/.test(text))) wrap.remove();
-      }
-    }
-  }
-  for (const node of [...root.querySelectorAll('p,div,span,li')]) {
-    if (node.querySelector('a[href],video,iframe,img,.prepared-video')) continue;
-    const text=cleanText(node.textContent||'');
-    const m=text.match(/^(?:\d+\s*[:：.-]\s*)?(https?:\/\/\S+\.(?:mp4|webm|m4v)(?:\?\S*)?)$/i);
-    if(!m) continue;
-    const key=preparedVideoKey(m[1]);
-    if(byKey.has(key)) node.remove();
-  }
+  // Keep original video URLs; only deduplicate equivalent video elements.
+
 }

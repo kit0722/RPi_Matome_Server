@@ -2230,6 +2230,16 @@ async function loadPreparedArticle() {
   }
   for(const card of contentEl.querySelectorAll('.prepared-video[data-video-key]')) {
     const record=(article.videos||[]).find(v=>v.key===card.dataset.videoKey);
+    // Saved articles may predate fallback links. Restore from video metadata.
+    const storedVideoUrl=httpVideoCandidates(record)[0] || '';
+    const tweetId=String(record?.tweet_id||'');
+    const sourceUrl=storedVideoUrl || (/^\d{6,}$/.test(tweetId)?'https://x.com/i/status/'+encodeURIComponent(tweetId):'');
+    let sourceLink=card.querySelector('a.prepared-video-source');
+    if(!sourceLink && /^https?:\/\//i.test(sourceUrl)) {
+      sourceLink=document.createElement('a');sourceLink.className='prepared-video-source';
+      sourceLink.href=sourceUrl;sourceLink.target='_blank';sourceLink.rel='noopener noreferrer';
+      sourceLink.textContent=storedVideoUrl?'動画URLを開く':'Xで動画を見る';card.append(sourceLink);
+    }
     if(record?.tweet_id || /^twimg:/.test(record?.key||'')) warmVideoCard(card,record);
     const start=(preferProxy=false)=>{
       warmVideoCard(card,record);
@@ -2278,7 +2288,7 @@ async function loadPreparedArticle() {
       video.addEventListener('canplay',()=>{if(!video.paused)markProgress();});
       video.addEventListener('error',fallback);
       video.addEventListener('stalled',()=>{if(!settled)armTimeout(sourceGeneration);});
-      card.replaceChildren(video,loading,retry);
+      card.replaceChildren(video,loading,retry,...(sourceLink?[sourceLink]:[]));
       setSource(usingProxy?proxy:direct[candidateIndex]);
     };
     card.querySelector('button')?.addEventListener('click',()=>start(false),{once:true});
