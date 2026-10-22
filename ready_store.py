@@ -1268,8 +1268,9 @@ class ReadyStore:
             'standby_ready':standby,
             'standby_target':target,
             'standby_full':standby>=target,
-            'auto_slide_eligible':count>=MAX_NEW_BUFFER and standby>=target,
-            'auto_slide_waiting_for_standby':count>=MAX_NEW_BUFFER and standby<target,
+            'auto_slide_eligible':count>=MAX_NEW_BUFFER and standby>=FULL_BUFFER_SWAP_BATCH,
+            'auto_slide_waiting_for_standby':count>=MAX_NEW_BUFFER and standby<FULL_BUFFER_SWAP_BATCH,
+            'full_buffer_swap_batch':FULL_BUFFER_SWAP_BATCH,
         }
 
     def release_waiting(self):
