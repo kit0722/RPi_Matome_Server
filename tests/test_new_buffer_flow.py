@@ -156,6 +156,80 @@ class NewBufferFlowTests(unittest.TestCase):
         self.assertIn("if not viewer_recently_active():",server)
         self.assertIn("READY.release_waiting()",server)
 
+    def test_full_300_is_replaced_20_for_20_atomically(self):
+        self.seed("base", 1000, 1500)
+        self.seed("new", 1500, 1800)
+        self.seed("hidden", 3000, 3030, hidden=True)
+        before = self.store.new_buffer_status()
+        self.assertEqual(before["new_buffer"], 300)
+        self.assertEqual(before["standby_ready"], 30)
+        released = self.store.release_waiting()
+        self.assertTrue(released["released"])
+        self.assertEqual(released["slid_count"], 20)
+        self.assertEqual(released["released_count"], 20)
+        self.assertEqual(released["new_buffer"], 300)
+        self.assertEqual(released["standby"], 10)
+        after = self.store.new_buffer_status()
+        self.assertEqual(after["new_buffer"], 300)
+        self.assertEqual(after["standby_ready"], 10)
+        self.assertEqual(after["new_buffer_cutoff"], 1519.0)
+        manifest = self.store.app_manifest(scope="all")
+        new_urls = [row["url"] for row in manifest if row["tier"] == "new"]
+        self.assertEqual(len(new_urls), 300)
+        self.assertEqual(sum("/hidden/" in url for url in new_urls), 20)
+        self.assertNotIn("https://example.test/new/1500", new_urls)
+
+    def test_less_than_20_ready_preserves_the_original_300(self):
+        self.seed("new", 1500, 1800)
+        self.seed("hidden", 3000, 3019, hidden=True)
+        before = self.store.new_buffer_status()
+        result = self.store.release_waiting()
+        after = self.store.new_buffer_status()
+        self.assertFalse(result["released"])
+        self.assertEqual(result["slid_count"], 0)
+        self.assertEqual(result["new_buffer"], 300)
+        self.assertEqual(after["new_buffer_cutoff"], before["new_buffer_cutoff"])
+        self.assertEqual(after["standby_ready"], 19)
+
+    def test_full_batch_has_30_second_throttle_without_count_drop(self):
+        self.seed("new", 1500, 1800)
+        self.seed("hidden", 3000, 3080, hidden=True)
+        first = self.store.release_waiting()
+        second = self.store.release_waiting()
+        self.assertEqual(first["slid_count"], 20)
+        self.assertEqual(second["slid_count"], 0)
+        self.assertEqual(second["new_buffer"], 300)
+        with self.store.connect() as db:
+            db.execute("INSERT OR REPLACE INTO status(key,value) VALUES (?,?)",
+                       ("auto_slide_last_ms", json.dumps(0)))
+        third = self.store.release_waiting()
+        self.assertEqual(third["slid_count"], 20)
+        self.assertEqual(third["new_buffer"], 300)
+        self.assertEqual(self.store.new_buffer_status()["standby_ready"], 40)
+
+    def test_simultaneous_full_swaps_publish_one_batch(self):
+        self.seed("new", 1500, 1800)
+        self.seed("hidden", 3000, 3080, hidden=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+            results = list(executor.map(lambda _: self.store.release_waiting(), range(3)))
+        self.assertEqual(sum(row["slid_count"] for row in results), 20)
+        self.assertTrue(all(row["new_buffer"] == 300 for row in results))
+        self.assertEqual(self.store.new_buffer_status()["standby_ready"], 60)
+
+    def test_swap_is_invisible_to_concurrent_reader_until_commit(self):
+        self.seed("new", 1500, 1800)
+        self.seed("hidden", 3000, 3020, hidden=True)
+        with self.store.connect() as writer:
+            writer.execute("BEGIN IMMEDIATE")
+            self.assertEqual(self.store._slide_full_new_buffer(writer), 20)
+            # The reader's separate WAL transaction sees the old full list.
+            before = self.store.new_buffer_status()
+            self.assertEqual(before["new_buffer"], 300)
+            self.assertEqual(before["standby_ready"], 20)
+        after = self.store.new_buffer_status()
+        self.assertEqual(after["new_buffer"], 300)
+        self.assertEqual(after["standby_ready"], 0)
+
     def test_full_buffer_slide_still_keeps_300_max(self):
         self.seed("base", 1000, 1500)
         self.seed("new", 1500, 1800)

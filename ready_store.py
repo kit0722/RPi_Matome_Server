@@ -17,6 +17,9 @@ VIEW_SCHEMA_MIN = 33
 # v0.1.231: 500 committed + 300 visible new + configurable hidden standby.
 MAX_BODY_CACHE = 500
 MAX_NEW_BUFFER = 300
+# Swap one completed batch without exposing a partially filled buffer.
+FULL_BUFFER_SWAP_BATCH = 20
+FULL_BUFFER_SWAP_INTERVAL_SECONDS = 30
 STANDBY_CHOICES = (500, 1000, 1500, 2000, 2500, 3000)
 DEFAULT_STANDBY = 1000
 MAX_STANDBY = max(STANDBY_CHOICES)
@@ -1092,9 +1095,7 @@ class ReadyStore:
             was_completed = bool(previous['body_file'] and previous['ready_time'])
             publish_time = previous['ready_time'] if was_completed else now
             marker=self._buffer_cutoff(c)
-            if not was_completed and marker is not None:
-                self._slide_full_new_buffer(c)
-                marker=self._buffer_cutoff(c)
+            # Only the viewer-active release pump rotates a full 300.
             if was_completed:
                 # Keep hidden standby (0) hidden through reprepare.
                 previous_release=previous['release_time']
@@ -1167,61 +1168,61 @@ class ReadyStore:
 
 
     def _slide_full_new_buffer(self, c):
-        """Promote 100 of 300 new articles only when ready standby is full.
+        """Atomically replace 20 oldest new rows with 20 completed standby rows.
 
-        Updating the shared cutoff in the caller's transaction preserves read
-        history; maintain() retires old bodies only after view leases expire.
+        There is never a published 280-row intermediate state. Only the active
+        release pump calls this, at most once per 30s; insufficient ready stock
+        leaves the original 300 untouched.
         """
         cutoff = self._buffer_cutoff(c)
         if cutoff is None:
             return 0
-        # Use this transaction's configured target and immediately publishable
-        # hidden stock. Retrying/preparing bodies are not available inventory.
-        target_row = c.execute("SELECT value FROM status WHERE key='standby_target'").fetchone()
-        try:
-            target = self._clamp_standby_target(json.loads(target_row['value'])) if target_row else DEFAULT_STANDBY
-        except (ValueError, TypeError):
-            target = DEFAULT_STANDBY
-        standby = int(c.execute("""SELECT COUNT(*) FROM articles
+        oldest = c.execute("""SELECT release_time FROM articles
           WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-            AND release_time<=0 AND state='ready'""",
-          (VIEW_SCHEMA_MIN,)).fetchone()[0] or 0)
-        if standby < target:
+            AND release_time>? AND state IN ('ready','retry','preparing')
+          ORDER BY release_time ASC,url ASC LIMIT ?""",
+          (VIEW_SCHEMA_MIN,cutoff,MAX_NEW_BUFFER+1)).fetchall()
+        if len(oldest) != MAX_NEW_BUFFER:
             return 0
-        moved = 0
-        while True:
-            rows = c.execute("""SELECT release_time FROM articles
-              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND release_time>? AND state IN ('ready','retry','preparing')
-              ORDER BY release_time ASC, url ASC LIMIT ?""",
-              (VIEW_SCHEMA_MIN, cutoff, MAX_NEW_BUFFER)).fetchall()
-            if len(rows) < MAX_NEW_BUFFER:
-                break
-            boundary = float(rows[99]['release_time'])
-            if boundary <= cutoff:
-                break
-            count = int(c.execute("""SELECT COUNT(*) FROM articles
-              WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
-                AND release_time>? AND release_time<=?
-                AND state IN ('ready','retry','preparing')""",
-                (VIEW_SCHEMA_MIN, cutoff, boundary)).fetchone()[0] or 0)
-            if count <= 0:
-                break
-            c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
-                      ('new_buffer_cutoff', json.dumps(boundary)))
-            cutoff = boundary
-            moved += count
-        if moved:
-            old_row = c.execute("SELECT value FROM status WHERE key='auto_slide_total'").fetchone()
-            try:
-                old_total = int(json.loads(old_row['value'])) if old_row else 0
-            except (ValueError, TypeError):
-                old_total = 0
-            c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
-                      ('auto_slide_total', json.dumps(old_total + moved)))
-            c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
-                      ('auto_slide_last_ms', json.dumps(int(time.time() * 1000))))
-        return moved
+        batch = FULL_BUFFER_SWAP_BATCH
+        boundary = float(oldest[batch-1]['release_time'])
+        if boundary<=cutoff or float(oldest[batch]['release_time'])<=boundary:
+            # Never advance a timestamp cutoff across a tied batch boundary.
+            return 0
+        standby = c.execute("""SELECT url FROM articles
+          WHERE schema_version>=? AND body_file IS NOT NULL AND ready_time IS NOT NULL
+            AND release_time<=0 AND state='ready'
+          ORDER BY source_time DESC,ready_time DESC,url LIMIT ?""",
+          (VIEW_SCHEMA_MIN,batch)).fetchall()
+        if len(standby)<batch:
+            return 0
+        now_ms=int(time.time()*1000)
+        recent=c.execute("SELECT value FROM status WHERE key='auto_slide_last_ms'").fetchone()
+        try:
+            last=int(json.loads(recent['value'])) if recent else 0
+        except (TypeError,ValueError):
+            last=0
+        if last and now_ms-last<FULL_BUFFER_SWAP_INTERVAL_SECONDS*1000:
+            return 0
+        # All updates use the release_waiting BEGIN IMMEDIATE transaction.
+        # Other readers see the old or new 300, not the intermediate 280.
+        newest = float(oldest[-1]['release_time'])
+        released_at=max(time.time(),newest+0.001)
+        c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
+                  ('new_buffer_cutoff',json.dumps(boundary)))
+        for i,row in enumerate(standby):
+            c.execute("UPDATE articles SET release_time=? WHERE url=?",
+                      (released_at+(batch-i)*0.000001,row['url']))
+        previous=c.execute("SELECT value FROM status WHERE key='auto_slide_total'").fetchone()
+        try:
+            cumulative=int(json.loads(previous['value'])) if previous else 0
+        except (TypeError,ValueError):
+            cumulative=0
+        c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
+                  ('auto_slide_total',json.dumps(cumulative+batch)))
+        c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',
+                  ('auto_slide_last_ms',json.dumps(now_ms)))
+        return batch
 
     def buffer_count(self):
         with self.connect() as c:
@@ -1267,12 +1268,13 @@ class ReadyStore:
             'standby_ready':standby,
             'standby_target':target,
             'standby_full':standby>=target,
-            'auto_slide_eligible':count>=MAX_NEW_BUFFER and standby>=target,
-            'auto_slide_waiting_for_standby':count>=MAX_NEW_BUFFER and standby<target,
+            'auto_slide_eligible':count>=MAX_NEW_BUFFER and standby>=FULL_BUFFER_SWAP_BATCH,
+            'auto_slide_waiting_for_standby':count>=MAX_NEW_BUFFER and standby<FULL_BUFFER_SWAP_BATCH,
+            'full_buffer_swap_batch':FULL_BUFFER_SWAP_BATCH,
         }
 
     def release_waiting(self):
-        """Release up to two fully-prepared standby articles while a viewer is active."""
+        """Top up a growing buffer, or atomically swap 20 if already full."""
         now=time.time()
         now_ms=now*1000.0
         with self.connect() as c:
@@ -1300,7 +1302,7 @@ class ReadyStore:
             try:last=float(json.loads(last_row['value'])) if last_row else 0
             except Exception:last=0
             if visible>=MAX_NEW_BUFFER or standby<=0 or (last and now_ms-last<interval*1000):
-                return {'released':False,'released_count':0,'new_buffer':visible,'standby':standby,'standby_target':target,
+                return {'released':bool(slid),'released_count':slid,'new_buffer':visible,'standby':standby,'standby_target':target,
                         'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER,'slid_count':slid}
             release_count=max(0,min(2,MAX_NEW_BUFFER-visible,standby))
             rows=c.execute("""SELECT url FROM articles
@@ -1308,7 +1310,7 @@ class ReadyStore:
                 AND release_time<=0 AND state='ready'
               ORDER BY source_time DESC,ready_time DESC,url LIMIT ?""",(VIEW_SCHEMA_MIN,release_count)).fetchall()
             if not rows:
-                return {'released':False,'released_count':0,'new_buffer':visible,'standby':standby,'standby_target':target,
+                return {'released':bool(slid),'released_count':slid,'new_buffer':visible,'standby':standby,'standby_target':target,
                         'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER,'slid_count':slid}
             total=len(rows)
             for i,row in enumerate(rows):
@@ -1316,9 +1318,6 @@ class ReadyStore:
                           (now+(total-i)*0.000001,row['url']))
             c.execute('INSERT OR REPLACE INTO status(key,value) VALUES (?,?)',('standby_last_release_ms',json.dumps(now_ms)))
             visible+=total;standby=max(0,standby-total)
-            post_slid=self._slide_full_new_buffer(c)
-            visible=max(0,visible-post_slid)
-            slid+=post_slid
             return {'released':True,'released_count':total,'new_buffer':visible,'standby':standby,'standby_target':target,
                     'next_interval_seconds':interval,'max_new':MAX_NEW_BUFFER,'slid_count':slid}
 
