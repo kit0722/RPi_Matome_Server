@@ -1,0 +1,94 @@
+{
+  "schema": 1,
+  "checks": [
+    {
+      "id": "runner_selftests",
+      "category": "safety",
+      "required": true,
+      "command": [
+        "python3",
+        "tools/test_magi_runner.py"
+      ],
+      "timeout": 120
+    },
+    {
+      "id": "latest_release",
+      "category": "safety",
+      "required": true,
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_release_metadata.py",
+        "-v"
+      ],
+      "timeout": 300
+    },
+    {
+      "id": "buffer_atomic",
+      "category": "functional",
+      "required": true,
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_auto_slide.py",
+        "-v"
+      ],
+      "timeout": 300
+    },
+    {
+      "id": "buffer_flow",
+      "category": "functional",
+      "required": true,
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_new_buffer_flow.py",
+        "-v"
+      ],
+      "timeout": 300
+    },
+    {
+      "id": "fresh_standby",
+      "category": "functional",
+      "required": true,
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests",
+        "-p",
+        "test_fresh_standby.py",
+        "-v"
+      ],
+      "timeout": 300
+    },
+    {
+      "id": "diff_check",
+      "category": "build",
+      "required": true,
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "timeout": 60
+    }
+  ]
+}
